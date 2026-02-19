@@ -1,7 +1,68 @@
-# Template tesi
+# Tesi triennale UniTo informatica - Digitalizzazione ECGs su carta
 
-All'interno di questa cartella è presente un template per una tesi triennale. Troverete tutti file necessari: dal file .tex per il frontespizio ad un capitolo sample con i comandi più comuni in LaTeX. Ah, il frontespizio ha anche il nuovo logo di UniTo heh.
+Repository contenente i sorgenti LaTeX della tesi triennale di Matteo Sardi.
 
-Se state scrivendo la tesi su Overleaf e volete risparmiare tempo, potete passare direttamente per il [template ufficiale](https://www.overleaf.com/latex/templates/template-bachelors-thesis-in-computer-science-university-of-turin/znktghkynbhw) e cliccare su "Open as Template". Il template verrà copiato nei vostri progetti e potrete cominciare da lì!
+---
 
-> Author: [Modica Luca](https://github.com/lucamodica)
+## Struttura del progetto
+
+```
+.
+├── main.tex
+├── Bibliography.bib
+├── README.md
+├── contents/
+│   ├── TitlePage.tex
+│   ├── Abstract.tex
+│   ├── CoolQuote.tex
+│   ├── SampleChapter.tex
+│   ├── ResponsabilityDeclaration.tex
+│   └── Thanks.tex
+├── images/
+│   ├── unito_logo.pdf
+└── .gitignore
+```
+
+---
+
+## Compilazione
+
+La tesi è stata realizzata con LaTeX e utilizza i seguenti package:
+
+- minted per l’evidenziazione del codice
+- babel e babelbib per la gestione delle lingue e della bibliografia
+- graphicx, caption, subcaption per immagini e figure
+- fancyhdr per gli header personalizzati
+
+
+### Procedura
+
+1. Pulire eventuali file temporanei:
+
+*.aux *.bbl *.blg *.toc *.fls *.fdb_latexmk *.synctex.gz _minted/
+
+2. Compilare con latexmk abilitando -shell-escape:
+
+latexmk -pdf -shell-escape main.tex
+
+3. Il PDF finale sarà generato come main.pdf.
+
+---
+
+## Submodule
+
+Questo progetto include una versione modificata del seguente submodule:
+  [ECG-Image-Kit](https://github.com/alphanumericslab/ecg-image-kit), distribuito sotto la licenza *BSD 3-Clause License*.
+
+  Nel submodule è presente il codice relativo al lavoro svolto.
+
+---
+
+## Licenza del progetto
+
+Questo repository è rilasciato sotto [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).  
+I submodule esterni mantengono la loro licenza originale.
+
+---
+
+> Author: [Matteo Sardi](https://github.com/matte2712s)
