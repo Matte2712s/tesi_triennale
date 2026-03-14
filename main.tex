@@ -9,7 +9,8 @@
 % dimensione del font
 \usepackage[fontsize=12pt]{scrextend}
 % lingua del testo
-\usepackage[english,italian]{babel}
+\usepackage[italian, english]{babel}
+\emergencystretch 3em%
 % lingua per la bibliografia
 \usepackage[fixlanguage]{babelbib}
 % package per generare testo fittizio. Potrebbe essere
@@ -31,11 +32,12 @@
 % uso dei listing per il codice
 \usepackage{listings}          
 % per inserire gli hyperlinks tra i vari elementi del testo 
-\usepackage[colorlinks=true, allcolors=black]{hyperref}    
+\usepackage[colorlinks=true, allcolors=black, hypertexnames=false]{hyperref}    
 % diversi tipi di sottolineature
 \usepackage[normalem]{ulem}
 % package e comando per creare pagine vuote
 \usepackage{afterpage}
+\usepackage{amsmath}
 \newcommand\blankpage{%
     \null%
     \thispagestyle{empty}%
@@ -115,10 +117,11 @@
 
 \tableofcontents
 
-\include{contents/SampleChapter}
+\include{contents/FirstChapter}
+\include{contents/SecondChapter}
 
 \bibliographystyle{plain}
-%\bibliography{Bibliography}
+\bibliography{Bibliography}
 \afterpage{\blankpage}
 \include{contents/Thanks}
 

@@ -1,3 +1,24 @@
 \begin{abstract}
-    \lipsum[1-4]
+\textbf{Titolo:} Generazione Sintetica di Tracciati Elettrocardiografici: Una pipeline per l'Allenamento di Modelli di Digitalizzazione Documentale tramite Simulazione di Artefatti Reali.
+
+\vspace{0.5cm}
+
+\noindent \textbf{Contesto e Motivazione:} Nonostante la progressiva digitalizzazione dei flussi di lavoro clinici, una vasta quantità di dati storici e diagnostici relativi all'elettrocardiografia (ECG) rimane conservata esclusivamente in formato cartaceo o scansioni analogiche. La conversione automatica di questi documenti in segnali digitali numerici è essenziale per l'analisi computazionale su larga scala. Tuttavia, lo sviluppo di modelli di Computer Vision robusti è spesso ostacolato dalla carenza di dataset annotati che presentino la variabilità e le imperfezioni tipiche dei documenti ospedalieri reali.
+
+\vspace{0.2cm}
+
+\noindent \textbf{Obiettivo:} Il presente lavoro propone lo sviluppo di un sistema di generazione sintetica di immagini ECG, finalizzato alla creazione di dataset massivi per l'addestramento di modelli di digitalizzazione. L'obiettivo primario è colmare il divario tra i dati sintetici ideali e la complessità dei tracciati fisici reperibili negli archivi clinici.
+
+\vspace{0.2cm}
+
+\noindent \textbf{Metodologia:} Il framework integra tecniche di modellazione del segnale cardiaco con algoritmi di rendering grafico avanzato, producendo in modo procedurale coppie di dati composte da un tracciato "pulito" (ground truth) e la corrispondente istanza degradata. La pipeline modulare include:
+\begin{enumerate}
+    \item \textbf{Generazione di layout ed intestazioni:} sintesi procedurale di dati anagrafici, formati di reportistica multimodale e griglie millimetrate.
+    \item \textbf{Simulazione di artefatti geometrici:} riproduzione di pieghe, rotazioni, deformazioni prospettiche e variazioni di orientamento del foglio.
+    \item \textbf{Degradazione dell'immagine:} simulazione di artefatti tipici dei processi di scansione, quali variazioni di contrasto, compressione dell'immagine, ombre e rumore del sensore.
+\end{enumerate}
+
+\vspace{0.2cm}
+
+\noindent \textbf{Risultati e Conclusioni:} L'approccio permette di generare una vasta varietà di campioni con una \textit{ground truth} intrinseca. L'integrazione di artefatti realistici nel processo di generazione sintetica, come suggerito da Li et al. \cite{li2020deep} per la robustezza dei modelli in presenza di disturbi strutturali e casuali, risulta fondamentale per superare le criticità legate alla variabilità dei documenti clinici reali. Il sistema si configura come uno strumento essenziale per la valorizzazione del patrimonio informativo contenuto negli archivi cardiologici, ponendo le basi per una completa automazione e digitalizzazione del recupero dati clinici.
 \end{abstract}
