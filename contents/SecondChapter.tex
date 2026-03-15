@@ -69,10 +69,10 @@ La funzione \texttt{get\_paper\_ecg()} in \texttt{extract\_leads.py} gestisce la
 Il sistema supporta quattro configurazioni di stampa, che replicano i formati utilizzati nella pratica clinica:
 
 \begin{itemize}
-    \item \textbf{12x1:} tutte e 12 le derivazioni disposte in una singola colonna. Ogni derivazione mostra 10 secondi di segnale.
-    \item \textbf{6x2:} le 12 derivazioni divise in due colonne da 6. Le derivazioni standard (I--aVF) occupano la prima colonna, quelle precordiali (V1--V6) la seconda. Ciascuna colonna mostra 5 secondi di segnale.
-    \item \textbf{3x4\_1 (formato clinico standard):} le 12 derivazioni disposte in 3 righe da 4 colonne, ciascuna mostrante 2.5 secondi di segnale da un segmento temporale diverso. Una derivazione ritmo (tipicamente la II) viene aggiunta come striscia completa da 10 secondi in calce all'immagine (\textit{full mode}).
-    \item \textbf{6x1\_split:} le derivazioni vengono distribuite su due pagine separate, con le prime 6 nella prima pagina e le restanti 6 nella seconda.
+    \item \textbf{$12\times1$:} tutte e 12 le derivazioni disposte in una singola colonna. Ogni derivazione mostra 10 secondi di segnale.
+    \item \textbf{$6\times2$:} le 12 derivazioni divise in due colonne da 6. Le derivazioni standard (I--aVF) occupano la prima colonna, quelle precordiali (V1--V6) la seconda. Ciascuna colonna mostra 5 secondi di segnale.
+    \item \textbf{$3\times4$\_1 (formato clinico standard):} le 12 derivazioni disposte in 3 righe da 4 colonne, ciascuna mostrante 2.5 secondi di segnale da un segmento temporale diverso. Una derivazione ritmo (tipicamente la II) viene aggiunta come striscia completa da 10 secondi in calce all'immagine (\textit{full mode}).
+    \item \textbf{$6\times1$\_split:} le derivazioni vengono distribuite su due pagine separate, con le prime 6 nella prima pagina e le restanti 6 nella seconda.
 \end{itemize}
 
 \subsection{Segmentazione Temporale nei Layout Multicolonna}
@@ -81,9 +81,9 @@ Per tutti i layout multicolonna, la segmentazione temporale segue un principio u
 \[
 t_{\text{colonna}} = \frac{t_{\text{totale}}}{N}
 \]
-Ogni derivazione riceve uno \texttt{shiftedStart} pari a $c \times t_{\text{colonna}}$ campioni rispetto all'inizio del segnale, dove $c$ è l'indice della colonna a cui appartiene. Il mapping derivazione→colonna è specifico di ciascun layout, ma la logica di calcolo dell'offset temporale è identica in tutti i casi.
+Ogni derivazione riceve uno \texttt{shiftedStart} pari a $c\times t_{\text{colonna}}$ campioni rispetto all'inizio del segnale, dove $c$ è l'indice della colonna a cui appartiene. Il mapping derivazione$\rightarrow$colonna è specifico di ciascun layout, ma la logica di calcolo dell'offset temporale è identica in tutti i casi.
 
-Nel formato 3x4, che è il più comune nella pratica clinica, la prima colonna (I, II, III) mostra i campioni da 0 a 2.5s, la seconda (aVR, aVL, aVF) da 2.5s a 5s, la terza (V1--V3) da 5s a 7.5s e la quarta (V4--V6) da 7.5s a 10s; la derivazione ritmo in calce mostra invece l'intera finestra. Nel layout 6x2, la prima colonna (I--aVF) mostra i campioni da 0 a 5s e la seconda (V1--V6) da 5s a 10s. In questo modo, indipendentemente dal layout, l'intera attività elettrica cardiaca registrata viene rappresentata in modo completo e temporalmente coerente su un'unica pagina.
+Nel formato $3\times4$, che è il più comune nella pratica clinica, la prima colonna (I, II, III) mostra i campioni da 0 a 2.5s, la seconda (aVR, aVL, aVF) da 2.5s a 5s, la terza (V1--V3) da 5s a 7.5s e la quarta (V4--V6) da 7.5s a 10s; la derivazione ritmo in calce mostra invece l'intera finestra. Nel layout $6\times2$, la prima colonna (I--aVF) mostra i campioni da 0 a 5s e la seconda (V1--V6) da 5s a 10s. In questo modo, indipendentemente dal layout, l'intera attività elettrica cardiaca registrata viene rappresentata in modo completo e temporalmente coerente su un'unica pagina.
 
 Il mapping derivazione→colonna per il formato 3x4 è definito nella struttura \texttt{format\_4\_by\_3} in \texttt{config.yaml}; lo \texttt{shiftedStart} viene calcolato per ogni derivazione in \texttt{extract\_leads.py}.
 
