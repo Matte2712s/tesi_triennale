@@ -1,0 +1,200 @@
+\chapter{Pipeline di Artefatti e Varietà del Dataset}
+
+Il presente capitolo descrive i tre moduli responsabili dell'applicazione degli artefatti all'immagine sintetica prodotta dal motore di rendering: il generatore di testo scritto a mano (\texttt{HandwrittenText}), il modulo di pieghe e rugosità della carta (\texttt{CreasesWrinkles}) e il modulo di augmentation fotometrica e geometrica (\texttt{ImageAugmentation}). Insieme, questi sottomoduli costituiscono la pipeline di degradazione controllata che trasforma un tracciato ECG pulito in una simulazione fedele di un documento clinico reale, scansionato o fotografato in condizioni non ideali.
+
+\section{Motivazione: il Domain Gap tra Sintetico e Reale}
+
+I modelli di segmentazione addestrati su immagini pulite tendono a degradare rapidamente le proprie prestazioni quando esposti a documenti clinici reali, che presentano invariabilmente difetti fotometrici, geometrici e strutturali accumulati nel ciclo di vita del documento: stampa, manipolazione, conservazione e scansione. Questo fenomeno, noto come \textit{domain gap}, è la ragione principale per cui la fase di augmentation è critica quanto quella di rendering.
+
+Come documentato da Li et al.~\cite{li2020deep} e confermato dalla letteratura sulla sintesi di documenti, l'esposizione sistematica del modello a perturbazioni realistiche durante il training è un mezzo efficace per ridurre il gap tra distribuzione sintetica e distribuzione reale. La pipeline descritta in questo capitolo persegue questo obiettivo attraverso tre classi di disturbi complementari, applicabili singolarmente o in combinazione.
+
+\section{Modulo di Testo Scritto a Mano}
+
+\subsection{Contesto e Obiettivo}
+
+Gli ECG clinici contengono frequentemente annotazioni manoscritte apposte dai medici: diagnosi abbreviate, note di somministrazione, iniziali del paziente o semplici segni di revisione. Quando queste annotazioni si sovrappongono ai tracciati, costituiscono uno dei disturbi più insidiosi per i modelli di digitizzazione, poiché condividono caratteristiche morfologiche con le curve del segnale ECG stesso.
+
+Il modulo \texttt{HandwrittenText/generate.py}, presente nella repository originale, simula questo fenomeno generando testo corsivo sintetico e sovrapponendolo all'immagine con posizione e dimensione variabili. L'unica modifica apportata in questo lavoro riguarda la funzione \texttt{get\_handwritten()}: essa è stata adattata per essere invocabile correttamente da processi figli del \texttt{ProcessPoolExecutor}, garantendo la compatibilità con la parallelizzazione introdotta nel batch processor (si veda la Sezione~\ref{sec:batch}).
+
+\subsection{Estrazione delle Parole Chiave con NLP}
+
+La pipeline per il testo manoscritto si articola in due fasi distinte: l'estrazione di termini clinicamente rilevanti e la loro conversione in immagini di scrittura a mano.
+
+Per la fase di estrazione, il sistema utilizza il modello \texttt{en\_core\_sci\_sm} della libreria \textit{sciSpacy}~\cite{neumann-etal-2019-scispacy}, specializzato per l'elaborazione di testi biomedici. La sorgente del testo è configurabile tramite il parametro \texttt{-l} e supporta due modalità:
+
+\begin{itemize}
+    \item \textbf{URL:} se il valore di \texttt{-l} è un URL valido, il testo viene scaricato in tempo reale tramite la libreria \texttt{BeautifulSoup}, che ne esegue il parsing HTML estraendo il testo puro. Il default è la pagina del dataset PTB-XL su PhysioNet.
+    \item \textbf{File locale:} se il valore non è un URL, viene interpretato come percorso a un file \texttt{.txt}. Passando una stringa vuota (\texttt{-l ''}), o non specificando il parametro, il sistema ricade sul file predefinito \texttt{HandwrittenText/Biomedical.txt}, un corpus biomedico incluso nella repository, che consente di operare senza connessione di rete.
+\end{itemize}
+
+In entrambi i casi il modello NLP analizza il testo applicando \textit{tokenizzazione}, \textit{part-of-speech tagging}, \textit{dependency parsing} e \textit{named entity recognition} con focus sul dominio cardiovascolare ed ECG. Il modello non è utilizzato nella sua versione standard: il modello SpaCy sottostante~\cite{honnibal2017spacy} è stato ri-addestrato sul corpus medico raccolto dagli autori per adattarne il vocabolario al contesto ECG; il dependency parser e il POS tagger sono stati ri-addestrati sul treebank di McClosky e Charniak~\cite{mcclosky2008}, basato sul corpus GENIA 1.0~\cite{kim2003genia}; il modello di named entity recognition è stato addestrato sul dataset MedMentions~\cite{mohan2019medmentions}. Le entità riconosciute come rilevanti vengono raccolte in un insieme da cui vengono campionate casualmente le parole da inserire nell'immagine.
+
+\subsection{Generazione della Scrittura a Mano}
+
+La conversione del testo in immagini di scrittura corsiva si basa sul progetto open source \textit{handwriting-generation}~\cite{grzego2016handwriting}, che implementa un modello \textit{Recurrent Neural Network} (RNN) con \textit{Mixture Density Network} (MDN) e meccanismo di attenzione a finestra soft, secondo l'architettura proposta da Graves~\cite{graves2013generating}.
+
+Una \textbf{RNN} è una rete neurale con connessioni ricorrenti: a ogni passo riceve l'input corrente \textit{e} un vettore di stato nascosto che riassume la storia dei passi precedenti. Questo la rende adatta a sequenze — come i movimenti di una penna — dove ogni elemento dipende da ciò che è venuto prima. Una \textbf{MDN} (\textit{Mixture Density Network}) è uno strato di output che, anziché predire un valore singolo, predice i parametri di una miscela di distribuzioni di probabilità; in questo modo la rete può esprimere output multimodali e incerti, essenziali per modellare la variabilità naturale della scrittura umana.
+
+Anziché generare pixel direttamente, il modello apprende a imitare i \textit{movimenti della penna}: l'output è una sequenza di spostamenti relativi $(x, y)$ con un flag che indica quando il tratto si interrompe (penna sollevata). Questo approccio vettoriale è più flessibile di una generazione pixel-per-pixel, in quanto consente di scalare e ruotare il testo generato senza perdita di qualità.
+
+\paragraph{Rappresentazione probabilistica dei movimenti.} A ogni passo temporale, la rete non produce un singolo valore deterministico per lo spostamento successivo, ma i parametri di una \textit{mixture} di distribuzioni gaussiane bivariate: medie $\mu_1, \mu_2$, deviazioni standard $\sigma_1, \sigma_2$, coefficiente di correlazione $\rho$, pesi della mixture $\pi$ e probabilità di fine-tratto $e$. In pratica, la rete esprime la propria incertezza sul prossimo movimento distribuendola su più gaussiane, ognuna delle quali rappresenta una possibile direzione del tratto. Il passo successivo viene poi \textit{campionato} da questa distribuzione, introducendo la variabilità casuale tipica della scrittura umana. Il parametro \texttt{bias} controlla quanto il campionamento si concentri attorno al valore più probabile: valori alti producono tratti regolari e leggibili, valori bassi accentuano la variabilità stilistica.
+
+\paragraph{Meccanismo di attenzione a finestra soft.} Uno dei problemi fondamentali nella generazione di scrittura a mano è che le sequenze di input (caratteri) e output (movimenti della penna) hanno lunghezze molto diverse e non note a priori: un carattere corsivo complesso richiede molti più tratti di uno semplice, e lo stile calligrafico influenza ulteriormente la lunghezza. Il modello risolve questo problema tramite una \textit{finestra soft}: una distribuzione gaussiana parametrizzata scorre progressivamente lungo la sequenza dei caratteri in ingresso, convolvendo con essa per produrre un contesto ponderato che indica alla rete quale carattere sta tracciando in ogni istante. La posizione $\kappa$ della finestra avanza monotonicamente nel tempo, garantendo che tutti i caratteri vengano coperti nell'ordine corretto. Questo meccanismo permette al modello di generare sequenze di output di lunghezza variabile e con allineamenti non noti, adattandosi automaticamente a diversi stili calligrafici.
+
+\paragraph{Campionamento autoregressivo.} La funzione \texttt{sample\_text()} esegue la generazione in modo \textit{autoregressivo}: lo spostamento campionato al passo $t$ diventa l'input al passo $t+1$, simulando esattamente come un essere umano traccia un carattere — ogni tratto dipende da dove si trovava la penna nel momento precedente. La generazione termina quando la probabilità di fine-sequenza $e$ supera 0.8, oppure al raggiungimento del limite di $60 \times |\text{testo}|$ passi.
+
+\paragraph{Stili calligrafici.} L'architettura del modello supporta il condizionamento su uno stile calligrafico tramite \textit{priming}: la sequenza di coordinate di un campione di scrittura reale viene preposta alla generazione sintetica, inducendo la rete a replicare le caratteristiche di quella calligrafia. Il file \texttt{styles.pkl} incluso nella repository contiene un insieme di tali campioni. Tuttavia, nella versione corrente del codice il parametro \texttt{--style} non è esposto nel batch script e la selezione dello stile nella funzione \texttt{get\_handwritten()} viene azzerata prima di essere utilizzata; la generazione avviene pertanto sempre senza condizionamento stilistico, producendo uno stile casuale determinato dal solo campionamento della MDN.
+
+\paragraph{Rendering finale.} La sequenza di coordinate viene convertita in un'immagine tramite \texttt{split\_strokes()}, che suddivide i punti in tratti continui secondo il flag di fine-tratto, e \texttt{cumsum()}, che integra gli spostamenti relativi in coordinate assolute. I tratti vengono poi disegnati su un canvas e sovrapposti all'immagine ECG nella posizione configurata.
+
+\subsection{Parametri di Controllo}
+
+I parametri che governano il comportamento del modulo sono:
+
+\begin{itemize}
+    \item \textbf{\texttt{-n}}: numero di parole manoscritte da aggiungere; di default 5, con possibilità di campionamento casuale nell'intervallo $[1, n]$ se \texttt{--deterministic\_num\_words} è disabilitato.
+    \item \textbf{\texttt{--x\_offset}, \texttt{--y\_offset}}: offset massimi in pixel rispetto ai bordi dell'immagine; in modalità non deterministica la posizione effettiva viene campionata casualmente all'interno di questi range, simulando la distribuzione irregolare delle annotazioni reali.
+    \item \textbf{\texttt{--deterministic\_offset}}: forza il posizionamento esatto alle coordinate $(\texttt{x\_offset}, \texttt{y\_offset})$ per tutti i run.
+    \item \textbf{\texttt{--deterministic\_hw\_size}}: usa una dimensione fissa per il testo manoscritto; di default la dimensione viene variata casualmente.
+\end{itemize}
+
+Questo modulo è computazionalmente il più oneroso dell'intera pipeline (fino a 6.25 secondi per immagine su hardware Apple M2). Da notare che la sessione TensorFlow viene configurata con \texttt{device\_count=\{'GPU': 0\}}, il che forza l'esecuzione esclusivamente su CPU; la parallelizzazione a livello di processo descritta nella Sezione~\ref{sec:batch} rimane pertanto il principale meccanismo per ridurre i tempi di generazione su larga scala.
+
+\section{Modulo di Pieghe e Rugosità della Carta}
+
+\subsection{Fenomenologia degli Artefatti Strutturali}
+
+Il modulo \texttt{CreasesWrinkles/creases.py} è presente nella repository originale e non ha subito modifiche in questo lavoro. Viene descritto qui per completezza, in quanto costituisce una componente fondamentale della pipeline di degradazione~\cite{ecgimagekitpaper}.
+
+I documenti ECG cartacei sono soggetti a due tipologie distinte di degradazione strutturale, con cause fisiche differenti. Le \textbf{rugosità} (\textit{wrinkles}) derivano dalla superficie non planare del documento: quando la luce dello scanner attraversa una superficie irregolare, le zone in rilievo producono riflessioni e ombre localizzate che si traducono in variazioni di luminosità nell'immagine acquisita. Le \textbf{pieghe} (\textit{creases}), invece, sono conseguenza di una piega fisica nella carta: la discontinuità geometrica genera un'ombra netta che si manifesta come una linea più scura o più chiara nell'immagine scansionata, rendendo difficile la lettura del tracciato nella zona interessata. I due artefatti vengono applicati cumulativamente sull'immagine ECG.
+
+\subsection{Sintesi delle Rugosità: Image Quilting}
+
+Le rugosità sono fenomeni di texture, ovvero perturbazioni visive distribuite su tutta la superficie del documento. Per sintetizzarle in modo realistico si ricorre alla tecnica dell'\textit{image quilting}~\cite{efros2023image}, che costruisce una nuova texture di dimensioni arbitrarie assemblando patch estratte da un'immagine campione reale. Il modulo dispone di un dataset di 20 fotografie di carta reale rugosa da cui viene selezionata casualmente la sorgente per ogni immagine generata.
+
+\paragraph{Costruzione della texture per sovrapposizione di patch.} La funzione \texttt{quilt()} divide la superficie di output in una griglia e riempie ogni cella con un blocco estratto dalla texture sorgente. La sfida è rendere impercettibili i confini tra blocchi adiacenti. A tale scopo vengono concatenate due strategie:
+
+\begin{enumerate}
+    \item \textbf{Selezione del patch ottimale (\texttt{randomBestPatch()}):} per ogni posizione della griglia, vengono valutati tutti i possibili blocchi estraibili dalla sorgente e viene scelto quello che minimizza l'errore $L^2$ nella zona di sovrapposizione con i blocchi già inseriti nelle posizioni vicine. In questo modo il contenuto del nuovo blocco è già simile a quello dei blocchi confinanti prima ancora di applicare qualsiasi fusione.
+    \item \textbf{Cucitura con minimum cut (\texttt{minCutPatch()}):} anche dopo la selezione ottimale rimane una discontinuità residua al confine. Per eliminarla, si calcola la \textit{superficie di errore} $e$ come differenza quadratica pixel per pixel tra il nuovo patch e il blocco già presente nella zona di sovrapposizione:
+    \[
+        e_{i,j} = \bigl(B_1(i,j) - B_2(i,j)\bigr)^2
+    \]
+    Il confine ottimale viene determinato calcolando il percorso di costo minimo attraverso questa superficie tramite programmazione dinamica (\texttt{minCutPath()}):
+    \[
+        E(i,j) = e_{i,j} + \min\bigl(E(i-1,j-1),\; E(i-1,j),\; E(i-1,j+1)\bigr)
+    \]
+    dove $E(i,j)$ è l'errore cumulativo minimo fino alla posizione $(i,j)$. L'ultima riga di $E$ indica il punto di uscita del percorso ottimale; il backtracking risale la matrice per determinare il confine esatto. Il nuovo patch viene applicato solo nella metà che sta al di là di questo confine, e il blocco pre-esistente nell'altra metà, ottenendo una transizione visivamente seamless~\cite{ecgimagekitpaper}.
+\end{enumerate}
+
+\paragraph{Compositing sull'immagine ECG.} La texture sintetica viene normalizzata in $[0,1]$ e ricentrata attorno a 0.4 sottraendo la media locale, in modo che le zone neutre della carta non alterino la luminosità del documento. La sovrapposizione avviene tramite la formula di \textit{soft light compositing}:
+
+\begin{equation}
+I_{\text{out}} = \begin{cases}
+2 \cdot I \cdot T & \text{se } T \leq 0.6 \\
+1 - 2(1-I)(1-T) & \text{se } T > 0.6
+\end{cases}
+\end{equation}
+
+dove $I$ è l'immagine ECG normalizzata e $T$ è la texture di rugosità. Questa formula emula l'effetto fotografico del \textit{soft light}: nelle zone più chiare della texture ($T > 0.6$) la formula schiarisce ulteriormente l'immagine, mentre nelle zone più scure ($T \leq 0.6$) la scurisce, replicando il comportamento della luce che interagisce con una superficie corrugata.
+
+\subsection{Sintesi delle Pieghe: Linee con Blur Gaussiano}
+
+A differenza delle rugosità, le pieghe sono artefatti \textit{localizzati}: si presentano come linee che attraversano il documento in una direzione determinata dall'angolo della piega fisica. La simulazione avviene disegnando linee rette su una maschera inizializzata a 1.0, con posizione, angolo e densità configurabili.
+
+\paragraph{Calcolo delle coordinate.} La funzione \texttt{getCoords()} calcola i punti di partenza e di arrivo di $n$ linee equidistanti dato un angolo $\theta$, distribuendo i punti di origine lungo i bordi dell'immagine secondo la forma pendenza-intercetta:
+\[
+y = m \cdot x + c, \quad m = \tan\!\left((180° - \theta)\cdot\frac{\pi}{180}\right)
+\]
+I casi $\theta = 90°$ e $\theta = 0°/180°$ richiedono una gestione separata. Per $\theta = 90°$ la pendenza sarebbe $m = \tan(90°)$, che è indefinita (la retta è verticale e non interseca l'asse $y$ in alcun punto finito), quindi la formula pendenza-intercetta non è applicabile. Per $\theta = 0°/180°$ la retta è orizzontale ($m = 0$) e l'intercetta coincide con la coordinata $y$ di partenza, ma il punto di arrivo non è determinabile tramite la stessa formula senza casi particolari. In entrambi i casi le coordinate vengono calcolate direttamente: per le rette verticali si divide l'asse $x$ in $n+1$ intervalli equidistanti, per le orizzontali l'asse $y$, evitando interamente il ricorso alla funzione tangente.
+
+\paragraph{Profilo di luminosità e blur gaussiano.} Per ogni piega vengono tracciate cinque linee parallele con intensità crescente verso il centro (1.05, 1.15, 1.25, 1.15, 1.05), simulando il gradiente di luminosità tipico di un'ombra reale. La maschera viene poi convoluta con un kernel gaussiano $3\times3$:
+\[
+G(x,y) = \frac{1}{2\pi\sigma^2} \exp\!\left(-\frac{x^2+y^2}{2\sigma^2}\right)
+\]
+La convoluzione gaussiana è una tecnica standard per replicare l'effetto di sfocatura di una fotocamera non a fuoco~\cite{dodge2016understanding}, e qui produce la sfumatura caratteristica dell'ombra di una piega in un documento scansionato. Se il kernel gaussiano è centrato sulla maschera, l'effetto simula una riflessione simmetrica; spostandone il centro si ottiene una riflessione asimmetrica, rappresentativa di angoli di illuminazione obliqui. La maschera finale viene moltiplicata elemento per elemento all'immagine ECG, modulando la luminosità in modo localizzato.
+
+Il sistema genera separatamente pieghe con angolo $\theta$ (\texttt{-nh} pieghe) e $\theta + 90°$ (\texttt{-nv} pieghe), parametrizzate da:
+
+\begin{itemize}
+    \item \textbf{\texttt{-ca}}: angolo delle pieghe in gradi; default: 90.
+    \item \textbf{\texttt{-nv}}: numero di pieghe nella direzione verticale; default: 10.
+    \item \textbf{\texttt{-nh}}: numero di pieghe nella direzione orizzontale; default: 10.
+    \item \textbf{\texttt{--deterministic\_angle/vertical/horizontal}}: fissano i rispettivi parametri deterministicamente invece di campionarli.
+\end{itemize}
+
+\section{Modulo di Augmentation Fotometrica e Geometrica}
+
+\subsection{Struttura della Pipeline}
+
+Il modulo \texttt{ImageAugmentation/augment.py} applica all'immagine una sequenza di trasformazioni tramite la libreria \texttt{imgaug}~\cite{imgaug}, organizzate in un oggetto \texttt{iaa.Sequential}. Nella repository originale il modulo comprendeva quattro trasformazioni: rotazione affine, rumore gaussiano additivo, crop e variazione di temperatura cromatica. In questo lavoro la pipeline è stata estesa con cinque nuove trasformazioni — dropout di pixel, sfocatura gaussiana, rumore sale e pepe, compressione JPEG e controllo della luminosità — e la rotazione è stata corretta per riempire le aree vuote con pixel bianchi anziché neri. La pipeline risultante è:
+
+\begin{minted}{python}
+seq = iaa.Sequential([
+    iaa.Affine(rotate=rot, cval=255),          # originale, corretto
+    iaa.ReplaceElementwise(dropout, 255),       # nuovo
+    iaa.GaussianBlur(sigma=blur),               # nuovo
+    iaa.SaltAndPepper(p=salt_pepper),           # nuovo
+    iaa.AdditiveGaussianNoise(scale=gaussian_noise * 255),  # originale, rip.
+    iaa.Multiply(brightness),                   # nuovo
+    iaa.Crop(percent=crop_sample),              # originale
+    iaa.JpegCompression(compression=jpeg_compression * 100),# nuovo
+    iaa.ChangeColorTemperature(temperature)     # originale
+])
+\end{minted}
+
+L'ordine rispecchia il ciclo di vita fisico del documento: la rotazione geometrica apre la sequenza perché l'interpolazione affine non deve agire su immagini già rumorose; i disturbi del sensore (dropout, blur, rumore) simulano la fase di acquisizione; il crop segue, rappresentando il ritaglio imperfetto della scansione; la compressione JPEG viene applicata \textit{dopo} il crop, simulando il salvataggio in formato compresso dell'immagine già acquisita — che è lo scenario più comune nell'archiviazione digitale dei documenti clinici; la temperatura cromatica chiude la pipeline agendo sull'immagine completamente degradata.
+
+\subsection{Trasformazioni Pre-esistenti}
+
+\paragraph{Rotazione.} La rotazione simula il disallineamento tra il documento e il piano di scansione. L'angolo effettivo $r$ viene campionato uniformemente nell'intervallo $[-\texttt{rot}, +\texttt{rot}]$ (default: 25°). La correzione apportata in questo lavoro consiste nell'impostare \texttt{cval=255} nell'operatore \texttt{iaa.Affine}: nell'implementazione originale le aree esterne al documento ruotato venivano riempite con pixel neri (0), producendo un bordo artificiale che non corrisponde a nessuna condizione reale di scansione. Il riempimento bianco (255) è fisicamente corretto, in quanto il piano di scansione è bianco.
+
+\paragraph{Rumore gaussiano additivo.} Il parametro originale \texttt{-noise} (scala assoluta 0--255) è stato reparametrizzato come \texttt{--gaussian\_noise} (frazione dell'intensità massima, intervallo $[0,1]$), con default 0.2. Il valore effettivo applicato è \texttt{gaussian\_noise} $\times$ 255, mantenendo la compatibilità comportamentale con l'originale ma rendendo il parametro più intuitivo e indipendente dalla profondità di bit dell'immagine.
+
+\paragraph{Crop.} Il parametro \texttt{-c} (default: 0.01) definisce la percentuale massima di rimozione per ciascun lato; il valore effettivo viene campionato da \texttt{random.uniform(0, crop)}. Simula il ritaglio dell'immagine causato da un posizionamento non ottimale sul piano dello scanner.
+
+\paragraph{Temperatura del colore.} Il parametro \texttt{-t} (default: 6500 K) modifica il bilanciamento del bianco tramite \texttt{iaa.ChangeColorTemperature()}, simulando la dominante cromatica della carta invecchiata (temperature basse, es. 3000 K) o dell'illuminazione fredda di scanner moderni (temperature alte, es. 8000 K).
+
+\subsection{Nuove Trasformazioni Introdotte}
+
+\paragraph{Dropout di pixel.} \texttt{iaa.ReplaceElementwise(mask=dropout, replacement=255)} sostituisce casualmente una frazione \texttt{dropout} (default: 0.02, ovvero il 2\%) dei pixel con bianco puro. Questo artefatto simula i \textit{pixel morti} dei sensori CCD invecchiati e i difetti di stampa in cui alcune porzioni del foglio rimangono non inchiostrate. Sostituire con bianco anziché con un valore casuale è coerente con la natura dello sfondo del documento.
+
+\paragraph{Sfocatura gaussiana.} \texttt{iaa.GaussianBlur(sigma=blur)} applica una convoluzione gaussiana con deviazione standard \texttt{blur} (default: 0.5 pixel). Simula la perdita di messa a fuoco tipica degli scanner a bassa qualità e delle fotografie con profondità di campo ridotta. A differenza del rumore gaussiano additivo, che agisce indipendentemente su ogni pixel, la sfocatura introduce correlazione spaziale tra pixel vicini, producendo un effetto visivamente distinto.
+
+La sfocatura viene implementata tramite \textbf{convoluzione spaziale} con il kernel gaussiano, anziché tramite la Trasformata di Fourier (FFT). Sebbene nel dominio delle frequenze la convoluzione si riduca a una moltiplicazione elemento per elemento — con complessità $O(n \log n)$ contro $O(n \cdot k^2)$ della convoluzione diretta — questo vantaggio si manifesta solo per kernel di grandi dimensioni. Per i valori di $\sigma$ tipicamente usati in questo contesto ($\sigma \leq 3$ pixel), il kernel gaussiano ha dimensioni ridotte (al più $7\times7$ pixel), rendendo la convoluzione spaziale più efficiente per via dell'overhead fisso dell'FFT. Inoltre, il kernel gaussiano è \textit{separabile}: la convoluzione 2D può essere decomposta in due convoluzioni 1D successive (prima per righe, poi per colonne), riducendo la complessità a $O(n \cdot 2k)$ e rendendo l'approccio spaziale ancora più vantaggioso rispetto all'FFT per kernel piccoli.
+
+\paragraph{Rumore sale e pepe.} \texttt{iaa.SaltAndPepper(p=salt\_pepper)} imposta casualmente una frazione \texttt{salt\_pepper} (default: 0.03) di pixel al massimo o al minimo di intensità. Questo tipo di rumore impulsivo è caratteristico dei canali di trasmissione digitale rumorosi e di alcune modalità di guasto dei sensori; la sua presenza nel dataset aumenta la robustezza del modello a questi pattern di disturbo binario.
+
+\paragraph{Compressione JPEG.} \texttt{iaa.JpegCompression(compression=jpeg\_compression $\times$ 100)} applica una compressione JPEG con fattore di qualità pari a $(1 - \texttt{jpeg\_compression}) \times 100$ (default: 0.6, corrispondente a qualità 40). La compressione JPEG introduce artefatti a blocchi $8\times8$ pixel particolarmente visibili nelle regioni a basso contrasto, come lo sfondo della carta millimetrata, e sulle discontinuità del segnale ECG. Questi artefatti sono estremamente comuni nelle copie digitali di ECG storici, dove i documenti originali sono stati fotografati con dispositivi mobili o compressi per l'archiviazione.
+
+\paragraph{Controllo della luminosità.} \texttt{iaa.Multiply(brightness)} moltiplica tutti i valori di pixel per il fattore \texttt{brightness} (default: 1.0, nessuna variazione). Valori inferiori a 1.0 simulano documenti sottoesposti o scansioni con calibrazione del bianco errata; valori superiori a 1.0 simulano sovraesposizione. Applicato dopo la compressione JPEG, agisce sull'immagine già degradata, amplificando o attenuando anche gli artefatti di compressione.
+
+\section{Propagazione delle Annotazioni attraverso la Pipeline}
+
+Un aspetto critico dell'implementazione è il mantenimento della coerenza tra le trasformazioni applicate all'immagine e le annotazioni (bounding box e pixel plottati) memorizzate nel file JSON. Il modulo \texttt{augment.py} gestisce questo problema in modo esplicito:
+
+\begin{enumerate}
+    \item Le bounding box delle derivazioni (\texttt{lead\_bbs}) e delle etichette (\texttt{leadNames\_bbs}) vengono convertite in oggetti \texttt{BoundingBoxesOnImage} della libreria \texttt{imgaug}, che le aggancia alla forma dell'immagine.
+    \item Dopo la rotazione, le coordinate delle bounding box vengono aggiornate tramite \texttt{rotate\_bounding\_box()}, che applica la matrice di rotazione 2D con centro nell'origine dell'immagine.
+    \item Le coordinate pixel dei segnali plottati vengono aggiornate tramite \texttt{rotate\_points()}.
+    \item Le bounding box aggiornate vengono riscritte nel dizionario JSON tramite \texttt{convert\_bounding\_boxes\_to\_dict()}.
+\end{enumerate}
+
+Questo meccanismo garantisce che i file di annotazione prodotti rimangano validi e utilizzabili per il training supervisionato anche dopo l'applicazione della pipeline di augmentation, evitando il disallineamento tra immagine e label che invaliderebbe l'intero dataset.
+
+\section{Orchestrazione degli Artefatti e Varietà del Dataset}
+
+\subsection{Modalità di Attivazione}
+
+I tre moduli sono attivabili in modo indipendente tramite i flag \texttt{--hw\_text}, \texttt{--wrinkles} e \texttt{--augment}. Possono essere combinati liberamente nella stessa esecuzione; in tal caso l'ordine di applicazione è fisso: prima le rugosità e pieghe (che agiscono sul file immagine su disco), poi il testo manoscritto (sovrapposto all'immagine risultante), infine le trasformazioni fotometriche e geometriche del modulo di augmentation.
+
+\subsection{Varietà Attraverso il Campionamento Stocastico}
+
+La varietà del dataset prodotto non dipende dalla quantità di configurazioni predefinite, ma dal campionamento casuale dei parametri di ogni artefatto. Per ogni immagine generata, i valori effettivi di rotazione, rumore, crop, temperatura, numero di pieghe, angolo delle pieghe, numero di parole manoscritte e posizione del testo vengono campionati indipendentemente dai rispettivi intervalli. Quando invece si desidera fissare il valore di un parametro specifico — ad esempio per isolare l'effetto di un singolo artefatto o per generare configurazioni controllate — è disponibile il corrispondente flag \texttt{--deterministic\_*} (es. \texttt{--deterministic\_noise}, \texttt{--deterministic\_rot}, \texttt{--deterministic\_angle}), che forza l'uso esatto del valore specificato senza campionamento. Il parametro \texttt{-se} (seed globale) consente infine di rendere l'intera generazione riproducibile fissando il generatore di numeri pseudocasuali, garantendo la replicabilità degli esperimenti.
+
+\subsection{Stima della Variabilità del Dataset}
+
+Considerando la combinazione dei soli parametri continui — angolo di rotazione in $[-25°, +25°]$, rumore in $[0, 50]$, temperatura in $[3000, 9000]$ K, numero di pieghe verticali e orizzontali in $[0, 10]$ — lo spazio delle configurazioni possibili è continuo e potenzialmente illimitato. In pratica, il numero effettivo di immagini distinte percettivamente è dominato dalla variabilità discreta delle scelte binarie (presenza/assenza dei tre moduli, BW/colore, presenza del pulse di calibrazione), moltiplicata per la variabilità continua dei parametri, producendo un dataset caratterizzato da una distribuzione di difficoltà controllata ma ad alta varianza, conforme alle indicazioni di Shivashankara et al.~\cite{ecgimagekitpaper} sulla generazione di dati sintetici realistici per il training.
+
+\vspace{4mm}
+Nel prossimo capitolo verranno presentati i risultati sperimentali ottenuti con questa pipeline di generazione, discutendo le configurazioni utilizzate e l'impatto delle diverse tipologie di artefatto sulle metriche di qualità del dataset prodotto.

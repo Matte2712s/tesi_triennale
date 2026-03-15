@@ -47,7 +47,7 @@ Il modulo \texttt{helper\_functions.py} espone le funzioni di basso livello per 
 
 Un passaggio critico è la normalizzazione dei nomi delle derivazioni, gestita da \texttt{standardize\_leads()}: la funzione uniforma le convenzioni di notazione, convertendo in maiuscolo le derivazioni standard (es. \texttt{i} $\rightarrow$ \texttt{I}) e applicando la notazione camelCase per le derivazioni aumentate (\texttt{avr} $\rightarrow$ \texttt{aVR}, \texttt{avl} $\rightarrow$ \texttt{aVL}, \texttt{avf} $\rightarrow$ \texttt{aVF}).
 
-\section{Pipeline di Elaborazione Batch}
+\section{Pipeline di Elaborazione Batch}\label{sec:batch}
 
 L'elaborazione di un intero dataset è gestita da \texttt{gen\_ecg\_images\_from\_data\_batch.py}. Il flusso è il seguente:
 
