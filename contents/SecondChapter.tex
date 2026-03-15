@@ -136,7 +136,7 @@ Per ogni derivazione nel vettore \texttt{lead\_index}, la funzione calcola le co
 
 \begin{itemize}
     \item \textbf{Posizione verticale (\texttt{y\_offset}):} calcolata come \texttt{initial\_y\_offset + (row\_idx * row\_height)}, dove \texttt{row\_height} è determinato in modo tale che tutte le derivazioni si distribuiscano uniformemente sull'altezza del canvas, tenendo conto del numero di righe e di un fattore di spaziatura verticale (\texttt{v\_space\_factor}).
-    \item \textbf{Posizione orizzontale (\texttt{x\_offset}):} calcolata come \texttt{current\_col * (secs + col\_gap)}, dove \texttt{col\_gap} è un parametro, opzionale, aggiunto per inserire un gap deterministico minimo tra le colonne.
+    \item \textbf{Posizione orizzontale (\texttt{x\_offset}):} calcolata come \texttt{current\_col * (secs + col\_gap)}, dove \texttt{col\_gap} è un gap orizzontale aggiuntivo inserito tra colonne adiacenti. Il parametro \texttt{--col\_gap} (in secondi, default 0) consente di separare visivamente le colonne nei layout multicolonna, simulando lo spazio bianco presente in alcuni formati di stampa clinica che separano i gruppi di derivazioni con un breve intervallo vuoto.
 \end{itemize}
 
 Il segnale di ogni derivazione viene tracciato come una polilinea:
@@ -156,17 +156,50 @@ Il sistema supporta tre modalità di colorazione della griglia:
     \item \textbf{Colori casuali:} le componenti RGB dei colori della griglia vengono campionate da distribuzioni uniformi, garantendo un'ampia varietà cromatica nel dataset. Attivato da \texttt{--random\_grid\_color}.
 \end{enumerate}
 
-Le linee della griglia seguono le convenzioni cliniche: linee maggiori (passo 0.2s / 0.5mV) con spessore e saturazione maggiore, linee minori (passo 0.04s / 0.1mV) più sottili e chiare. Un ulteriore parametro \texttt{--prob\_dotted} consente di sostituire le linee minori con una griglia di punti, simulando alcuni formati di stampa utilizzati in dispositivi ECG più datati.
+Le linee della griglia seguono le convenzioni cliniche: linee maggiori (passo 0.2s / 0.5mV) con spessore e saturazione maggiore, linee minori (passo 0.04s / 0.1mV) più sottili e chiare. Un ulteriore parametro \texttt{--prob\_dotted} consente di sostituire le linee minori con una griglia di punti, simulando alcuni formati di stampa utilizzati in dispositivi ECG più datati. La Figura~\ref{fig:grid_dotted} mostra il confronto tra i due stili su un dettaglio della stessa immagine.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \includegraphics[width=\textwidth, trim={3.8in 2.8in 3.8in 2.8in}, clip]{images/sample_grid_normal.png}
+        \caption{Griglia standard: linee minori continue.}
+        \label{fig:grid_normal}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \includegraphics[width=\textwidth, trim={3.8in 2.8in 3.8in 2.8in}, clip]{images/sample_grid_dotted.png}
+        \caption{Griglia dotted (\texttt{--prob\_dotted}): le linee minori sono sostituite da punti agli incroci.}
+        \label{fig:grid_dotted_sub}
+    \end{subfigure}
+    \caption{Confronto tra griglia standard e griglia dotted (dettaglio centrale).}
+    \label{fig:grid_dotted}
+\end{figure}
 
 \subsection{Impulso di Calibrazione}
 
 L'impulso di calibrazione (o \textit{DC pulse}) è un'onda quadra di ampiezza 1 mV e durata 0.2 secondi posizionata a sinistra di ogni derivazione. Esso è presente negli ECG clinici come riferimento per la taratura dell'ampiezza. Il sistema supporta due modalità:
 
 \begin{itemize}
-    \item \textbf{Single:} un unico impulso posizionato casualmente su una riga. È prevista la possibilità di clipping parziale, controllata da due parametri distinti: \texttt{--prob\_pulse\_clip} definisce la probabilità che l'impulso venga troncato, mentre \texttt{--pulse\_clip\_fraction} determina la percentuale dell'ampiezza che viene eliminata. Ad esempio, con \texttt{--pulse\_clip\_fraction 0.5} l'impulso viene tagliato a metà della sua altezza nominale, simulando i casi in cui l'impulso di calibrazione risulta parzialmente fuori campo nell'ECG acquisito.
+    \item \textbf{Single:} un unico impulso posizionato casualmente su una riga. È prevista la possibilità di clipping parziale, controllata da due parametri distinti: \texttt{--prob\_pulse\_clip} definisce la probabilità che l'impulso venga troncato, mentre \texttt{--pulse\_clip\_fraction} determina la frazione della durata rimossa. Il lato di taglio (sinistro o destro) è scelto casualmente con probabilità uniforme, simulando i casi in cui l'onda quadra risulta parzialmente fuori campo nell'ECG acquisito.
     \item \textbf{Per lead:} un impulso per ogni derivazione, precedente al segnale.
 \end{itemize}
-%da aggiungere due immagini, una pulse completa e una clipped
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{images/sample_pulse_full.png}
+        \caption{Impulso di calibrazione completo: ampiezza 1~mV (2 quadretti), durata 0.2~s (1 quadretto).}
+        \label{fig:pulse_full}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{images/sample_pulse_clipped.png}
+        \caption{Impulso troncato (\texttt{--prob\_pulse\_clip}): il taglio avviene casualmente dal lato sinistro o destro, simulando un'acquisizione parzialmente fuori campo.}
+        \label{fig:pulse_clipped}
+    \end{subfigure}
+    \caption{Confronto tra impulso di calibrazione completo e clippato.}
+    \label{fig:pulse_comparison}
+\end{figure}
 
 La probabilità che l'impulso sia presente in un'immagine è controllata da \texttt{--calibration\_pulse}. L'ampiezza e la durata dell'impulso sono parametrizzabili tramite \texttt{--dc\_pulse\_amplitude} e \texttt{--dc\_pulse\_duration}.
 
@@ -196,7 +229,7 @@ Il flag \texttt{--generate\_clean}, introdotto come nuova fuonzionalità, abilit
 Al termine della generazione di ogni immagine, il sistema produce i seguenti file:
 
 \begin{itemize}
-    \item \textbf{Immagine PNG sintetizzata:} il file immagine principale, con griglia, derivazioni, etichette e tutti gli artefatti richiesti.
+    \item \textbf{Immagine PNG sintetizzata:} il file immagine principale, con griglia, derivazioni, etichette e tutti gli artefatti richiesti. Se \texttt{--add\_qr\_code} è attivo, viene sovrapposto in alto a destra un codice QR che codifica il percorso relativo del file WFDB sorgente (campo \texttt{encoding} del record). Questo elemento permette di risalire univocamente alla registrazione originale a partire dalla sola immagine.
     \item \textbf{Immagine PNG pulita (opzionale):} la ground truth visiva, priva di griglia e disturbi.
     \item \textbf{File WFDB aggiornato:} una copia dei file \texttt{.hea} e \texttt{.dat} che riflette la segmentazione temporale applicata, con i campioni non visualizzati eventualmente mascherati con \texttt{NaN}.
     \item \textbf{File JSON di configurazione (opzionale):} serializza i parametri utilizzati per generare l'immagine (risoluzione, DPI della griglia, presenza del pulse di calibrazione, colori, flag di augmentation), nonché le coordinate delle bounding box e i pixel plottati per ogni derivazione. Il livello di dettaglio è controllato dal parametro \texttt{--store\_config} (livello 1: attributi di alto livello; livello 2: informazioni complete).
