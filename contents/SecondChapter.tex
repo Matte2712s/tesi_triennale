@@ -1,12 +1,12 @@
 \chapter{Architettura del Software e Logica di Rendering}
 
-Il presente capitolo illustra la struttura interna del sistema \textit{ecg-image-generator}, descrivendo come i moduli che lo compongono cooperino per trasformare un segnale ECG digitale in un'immagine sintetica pronta per l'uso in pipeline di Deep Learning. Il sistema è stato sviluppato a partire dalla repository pubblica \textit{ECG-Image-Kit}~\cite{ecgimagekitpaper}, sulla quale sono state apportate significative estensioni e personalizzazioni al fine di aumentarne la flessibilità, le prestazioni e la varietà dell'output prodotto.
+Il presente capitolo illustra la struttura interna del sistema di generazione delle immagini, descrivendo come i moduli che lo compongono cooperino per trasformare un segnale ECG digitale in un'immagine sintetica pronta per l'addestramento di modelli di Deep Learning. Il sistema è stato sviluppato a partire dalla repository pubblica \textit{ECG-Image-Kit}~\cite{ecgimagekitpaper}, sulla quale sono state apportate significative estensioni e modifiche al fine di aumentarne la flessibilità, le prestazioni e la varietà dell'output prodotto.
 
 \section{Struttura Modulare del Progetto}
 
-Il software è organizzato secondo una architettura a strati ben separati, in cui ogni modulo è responsabile di una fase specifica della pipeline. La struttura delle directory principali è la seguente:
+Il software è organizzato secondo una architettura a strati ben separati, in cui ogni modulo è responsabile di una fase specifica della pipeline. I due script principali (\texttt{gen\_ecg\_images\allowbreak{}\_from\_\allowbreak{}data\_batch.py} e \texttt{gen\_ecg\_image\allowbreak{}\_from\_\allowbreak{}data.py}) costituiscono i punti di ingresso della pipeline, rispettivamente per l'elaborazione in modalità batch e per la generazione da un singolo file. Il nucleo del rendering è contenuto in \texttt{ecg\_plot.py}, mentre la logica di estrazione e segmentazione del segnale risiede in \texttt{extract\_leads.py}. I sottomoduli \texttt{HandwrittenText}, \texttt{CreasesWrinkles} e \texttt{ImageAugmentation} sono responsabili delle fasi di applicazione degli artefatti all'immagine, descritte in dettaglio nel Capitolo~3.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{dirtree}{%
 .1 ecg-image-generator/.
@@ -33,15 +33,14 @@ Il software è organizzato secondo una architettura a strati ben separati, in cu
 \end{dirtree}
 \end{figure}
 
-I due script principali (\texttt{gen\_ecg\_images\_from\_data\_batch.py} e \texttt{gen\_ecg\_image\_from\_data.py}) costituiscono i punti di ingresso della pipeline, rispettivamente per l'elaborazione in modalità batch e per la generazione da un singolo file. Il nucleo del rendering è contenuto in \texttt{ecg\_plot.py}, mentre la logica di estrazione e segmentazione del segnale risiede in \texttt{extract\_leads.py}. I sottomoduli \texttt{HandwrittenText}, \texttt{CreasesWrinkles} e \texttt{ImageAugmentation} sono responsabili delle fasi di degradazione dell'immagine, descritte in dettaglio nel Capitolo~3.
-
 \section{Formato dei Dati in Ingresso: lo Standard WFDB}
 
-Il sistema accetta segnali ECG nel formato \textit{WFDB} (WaveForm DataBase), definito da PhysioNet~\cite{physionet}, che è lo standard de facto per i dataset di segnali biomedici aperti. Ogni registrazione è composta da due file distinti:
+Il sistema accetta segnali ECG nel formato \textit{WFDB} (WaveForm DataBase), definito da PhysioNet~\cite{PhysioNet-ptb-xl-1.0.3}, che costituisce lo standard \textit{de facto} per i dataset di segnali biomedici aperti. Ogni registrazione è composta da due file distinti, ai quali si aggiunge un file CSV di metadati condiviso tra tutti i record del dataset:
 
 \begin{itemize}
-    \item Un file \textbf{header} (\texttt{.hea}), in formato testuale, contenente i metadati della registrazione: numero di derivazioni, frequenza di campionamento, guadagni del convertitore analogico-digitale (ADC), nomi delle derivazioni, data e ora di acquisizione.
-    \item Un file \textbf{dati} (\texttt{.dat} oppure \texttt{.mat}), contenente i campioni del segnale in formato binario o come matrice numerica.
+    \item \textbf{File Header (.hea):} Metadati tecnici, in formato testuale (frequenza campionamento, gain, baseline, nomi derivazioni).
+    \item \textbf{File Dati (.dat):} Segnale binario grezzo (16-bit) per le 12 derivazioni.
+    \item \textbf{File Metadati (.csv):} Dati paziente (id, età, sesso, diagnosi) e indicatori di qualità (rumore, drift, artefatti) per il controllo del rendering.
 \end{itemize}
 
 Il modulo \texttt{helper\_functions.py} espone le funzioni di basso livello per il parsing di questi file. La funzione \texttt{load\_header()} legge il file \texttt{.hea} come stringa, da cui vengono estratti la frequenza di campionamento tramite \texttt{get\_frequency()}, i nomi delle derivazioni tramite \texttt{get\_leads()} e i guadagni ADC tramite \texttt{get\_adc\_gains()}. Il segnale grezzo viene poi caricato da \texttt{load\_recording()}, che utilizza la libreria \texttt{wfdb} per i file \texttt{.dat} e \texttt{scipy.io} per i file \texttt{.mat}, restituendo in entrambi i casi una matrice NumPy di forma \texttt{(campioni, derivazioni)}.
@@ -55,8 +54,8 @@ L'elaborazione di un intero dataset è gestita da \texttt{gen\_ecg\_images\_from
 \begin{enumerate}
     \item \textbf{Scansione della directory di input:} la funzione \texttt{find\_records()} percorre ricorsivamente la directory di input cercando file \texttt{.dat} o \texttt{.mat}, accoppiando ciascun file dati con il corrispondente header \texttt{.hea}. La struttura di sottodirectory viene replicata nella cartella di output.
     \item \textbf{Preparazione dei task:} per ogni coppia di file viene creata una copia degli argomenti di configurazione, con i percorsi di input e output specifici. Il layout di colonne viene determinato automaticamente in base al parametro \texttt{--layout} scelto.
-    \item \textbf{Esecuzione parallela:} i task vengono distribuiti su un pool di processi tramite \texttt{ProcessPoolExecutor}, che sfrutta la parallelizzazione a livello di processo per aggirare il Global Interpreter Lock di Python. Questo meccanismo, introdotto come contributo originale al progetto, ha ridotto sensibilmente i tempi di generazione su dataset di grandi dimensioni.
-    \item \textbf{Monitoraggio e statistiche:} una barra di avanzamento \texttt{tqdm} mostra in tempo reale lo stato della generazione. Al termine, il sistema stampa statistiche aggregate: numero totale di immagini prodotte, tempo totale, immagini per secondo.
+    \item \textbf{Esecuzione parallela:} i task vengono distribuiti su un pool di processi tramite \texttt{ProcessPoolExecutor}, che sfrutta la parallelizzazione a livello di processo per aggirare il Global Interpreter Lock (GIL) di Python. Una soluzione basata su \texttt{ThreadPoolExecutor} è stata valutata ma scartata: il GIL impedisce l'esecuzione simultanea di bytecode Python su thread distinti, rendendo il parallelismo a thread inefficace per workload CPU-bound come quello in esame. L'utilizzo di processi separati, ciascuno con il proprio interprete e heap, consente invece la vera esecuzione concorrente su più core fisici. L'unica risorsa logicamente condivisa tra i processi è il file CSV dei metadati. Poiché l'accesso avviene esclusivamente in modalità \textit{read-only}, il sistema operativo consente aperture concorrenti del file senza necessità di meccanismi di sincronizzazione espliciti o serializzazione artificiale, garantendo così la massima scalabilità durante la generazione parallela del dataset. Il meccanismo, introdotto come contributo originale al progetto, ha ridotto sensibilmente i tempi di generazione su dataset di grandi dimensioni come PTB-XL, che conta oltre 21\,000 registrazioni. Il carico di lavoro si presta in modo naturale alla parallelizzazione: ogni record ECG è un'unità di elaborazione completamente indipendente dalle altre, priva di stato condiviso tra task distinti. La generazione di ciascuna immagine coinvolge operazioni computazionalmente intensive — rendering vettoriale, applicazione di artefatti grafici e augmentazione — che non richiedono sincronizzazione né comunicazione tra processi. Questo pattern \textit{embarrassingly parallel} permette di saturare efficacemente tutti i core disponibili, con un overhead di coordinamento trascurabile rispetto al costo di ogni singolo task.
+    \item \textbf{Monitoraggio e statistiche:} una barra di avanzamento \texttt{tqdm} mostra in tempo reale lo stato della generazione. Il processo può essere interrotto dall'utente in qualsiasi momento tramite segnale di interruzione ({\ttfamily Ctrl+C}): in tal caso, i task già completati vengono preservati e il sistema stampa comunque le statistiche parziali relative alle immagini generate fino a quel momento — numero di immagini prodotte, tempo trascorso e immagini per secondo.
 \end{enumerate}
 
 Ogni task viene eseguito dalla funzione \texttt{run\_single\_file()} definita in \texttt{gen\_ecg\_image\_from\_data.py}, che costituisce il nucleo dell'intera pipeline di generazione per un singolo record.
@@ -76,35 +75,49 @@ Il sistema supporta quattro configurazioni di stampa, che replicano i formati ut
     \item \textbf{6x1\_split:} le derivazioni vengono distribuite su due pagine separate, con le prime 6 nella prima pagina e le restanti 6 nella seconda.
 \end{itemize}
 
-\subsection{Segmentazione Temporale per il Formato 3x4}
+\subsection{Segmentazione Temporale nei Layout Multicolonna}
 
-Il formato clinico standard (3x4) merita una descrizione più dettagliata, poiché il campionamento dei segmenti non è contiguo ma \textit{sfasato}: la prima colonna (derivazioni I, II, III) mostra i campioni da 0 a 2.5s, la seconda colonna (aVR, aVL, aVF) mostra i campioni da 2.5s a 5s, la terza (V1--V3) da 5s a 7.5s, e la quarta (V4--V6) da 7.5s a 10s. La derivazione ritmo in fondo alla pagina mostra invece l'intera finestra da 10 secondi. In questo modo, su carta si rappresenta l'attività elettrica completa del cuore in un'unica pagina, con le colonne allineate temporalmente.
+Per tutti i layout multicolonna, la segmentazione temporale segue un principio uniforme: la finestra di 10 secondi viene suddivisa in $N$ intervalli contigui e di uguale durata, uno per colonna, secondo la formula:
+\[
+t_{\text{colonna}} = \frac{t_{\text{totale}}}{N}
+\]
+Ogni derivazione riceve uno \texttt{shiftedStart} pari a $c \times t_{\text{colonna}}$ campioni rispetto all'inizio del segnale, dove $c$ è l'indice della colonna a cui appartiene. Il mapping derivazione→colonna è specifico di ciascun layout, ma la logica di calcolo dell'offset temporale è identica in tutti i casi.
 
-Questo schema di segmentazione è implementato in \texttt{extract\_leads.py} tramite un calcolo dello \texttt{shiftedStart} per ogni derivazione in funzione della sua appartenenza alla colonna corrispondente nella struttura \texttt{format\_4\_by\_3} definita in \texttt{config.yaml}.
+Nel formato 3x4, che è il più comune nella pratica clinica, la prima colonna (I, II, III) mostra i campioni da 0 a 2.5s, la seconda (aVR, aVL, aVF) da 2.5s a 5s, la terza (V1--V3) da 5s a 7.5s e la quarta (V4--V6) da 7.5s a 10s; la derivazione ritmo in calce mostra invece l'intera finestra. Nel layout 6x2, la prima colonna (I--aVF) mostra i campioni da 0 a 5s e la seconda (V1--V6) da 5s a 10s. In questo modo, indipendentemente dal layout, l'intera attività elettrica cardiaca registrata viene rappresentata in modo completo e temporalmente coerente su un'unica pagina.
 
-Il parametro \texttt{--mask\_unplotted\_samples} consente di mascherare con \texttt{NaN} le porzioni di segnale non rappresentate graficamente nel file WFDB di output, permettendo un allineamento preciso tra immagine e segnale digitale.
+Il mapping derivazione→colonna per il formato 3x4 è definito nella struttura \texttt{format\_4\_by\_3} in \texttt{config.yaml}; lo \texttt{shiftedStart} viene calcolato per ogni derivazione in \texttt{extract\_leads.py}.
+
+Il parametro \texttt{--mask\_unplotted\_samples} consente di mascherare con \texttt{NaN} le porzioni di segnale non rappresentate graficamente nel file WFDB di output: il sistema produce infatti, oltre all'immagine, una copia aggiornata dei file \texttt{.hea} e \texttt{.dat} che riflette la segmentazione temporale applicata (si veda la Sezione~\ref{sec:output}). Questo meccanismo permette un allineamento preciso tra immagine e segnale digitale, rendendo il dato utilizzabile direttamente per task di digitizzazione supervisionata.
 
 \section{Il Motore di Rendering: \texttt{ecg\_plot.py}}
 
 Il cuore del sistema è la funzione \texttt{ecg\_plot()} in \texttt{ecg\_plot.py}. Essa riceve il dizionario del segnale segmentato e produce un'immagine PNG rispettando le proporzioni fisiche di un ECG stampato su carta standard.
 
-\subsection{Calibrazione Fisica della Griglia}
+\subsection{Calibrazione Fisica della Griglia e del Canvas}
 
-Uno dei requisiti fondamentali per l'addestramento di modelli di digitizzazione è che la corrispondenza tra pixel e grandezze fisiche sia nota e precisa. Il sistema utilizza come riferimento le convenzioni cliniche standard:
+Uno dei requisiti fondamentali per l'addestramento di modelli di digitizzazione è che la corrispondenza tra pixel e grandezze fisiche sia nota e rigorosamente precisa. Il sistema di rendering utilizza come riferimento le convenzioni cliniche standard della carta millimetrata:
 
 \begin{itemize}
-    \item \textbf{Asse temporale:} una quadretto grande corrisponde a 0.2 secondi; ogni suddivisione minore a 0.04 secondi.
-    \item \textbf{Asse di ampiezza:} una quadretto grande corrisponde a 0.5 mV.
-    \item \textbf{Dimensioni della griglia:} i valori in pollici per ogni cella sono \texttt{y\_grid\_inch = x\_grid\_inch = 5/25.4} (5 mm convertiti in pollici), garantendo la proporzione 1:1 tra gli assi.
+    \item \textbf{Asse temporale (asse $x$):} un quadretto grande ($5$ mm) corrisponde a $0.2$ s (ipotizzando una velocità di scorrimento di $25$ mm/s); ogni suddivisione minore ($1$ mm) a $0.04$ s.
+    \item \textbf{Asse di ampiezza (asse $y$):} un quadretto grande ($5$ mm) corrisponde a $0.5$ mV, definendo una sensibilità standard di $10$ mm/mV.
+    \item \textbf{Proporzioni geometriche:} le dimensioni fisiche di ogni cella della griglia sono impostate tramite i parametri \texttt{y\_grid\_inch = x\_grid\_inch = 5/25.4}. 
 \end{itemize}
 
-Il canvas è configurato con dimensioni fisiche fisse (default: 11$\times$8.5 pollici, corrispondente al formato \textit{letter}), e la risoluzione in DPI determina il numero effettivo di pixel dell'immagine. A 200 DPI si ottiene un'immagine di circa $2200 \times 1700$ pixel, mentre il parametro \texttt{--random\_resolution} consente di campionare casualmente la risoluzione nell'intervallo $[50, r]$ per aumentare la varietà del dataset.
+La scelta di operare in pollici per la definizione del canvas è dettata dalla necessità di interfacciarsi con gli standard nativi delle librerie di rendering grafico (come \textit{Matplotlib}). La conversione dei parametri fisici ($5 \text{ mm} \rightarrow 5/25.4 \text{ pollici}$) garantisce la fedeltà metrica del tracciato, assicurando che la griglia millimetrata mantenga le proporzioni cliniche standard e una risoluzione spaziale costante, indipendentemente dalla densità di pixel del dispositivo di output.
 
-La relazione tra risoluzione $D$ (in DPI) e frequenza di campionamento equivalente dell'immagine $f_s'$ è~\cite{ecgimagekitpaper}:
-\[
+Il canvas è configurato con dimensioni fisiche fisse (default: $11 \times 8.5$ pollici, corrispondente al formato \textit{letter}). La risoluzione impostata in DPI (\textit{Dots Per Inch}) determina il numero effettivo di pixel dell'immagine finale: a $200$ DPI si ottiene una matrice di circa $2200 \times 1700$ pixel. Il sistema permette inoltre una variabilità controllata tramite il parametro \texttt{--random\_resolution}, che campiona casualmente la risoluzione nell'intervallo $[50, r]$ per aumentare la robustezza e la varietà del dataset sintetico.
+
+\subsection{Risoluzione Immagine e Frequenza di Campionamento Equivalente}
+
+La scelta della risoluzione $D$ (in DPI) non risponde solo a esigenze estetiche, ma determina la capacità del sistema di preservare il contenuto informativo del segnale originale. Come dimostrato da Shivashankara et al.~\cite{ecgimagekitpaper}, una volta che il segnale viene renderizzato su un canvas, la sua frequenza di campionamento originale ($f_s$) decade in favore di una \textbf{frequenza di campionamento equivalente dell'immagine} ($f_s'$), definita dalla densità spaziale dei pixel lungo l'asse temporale:
+
+\begin{equation}
 f_s' = \frac{D}{1.016} \quad \text{[Hz]}
-\]
-Questo implica che risoluzioni inferiori a 150 DPI producono una frequenza di campionamento equivalente insufficiente per rappresentare fedelmente i transienti ad alta frequenza del segnale ECG.
+\end{equation}
+
+Questa relazione implica che la risoluzione agisce come un filtro di campionamento nel dominio spaziale. Sebbene risoluzioni elevate producano tracciati visivamente più fluidi, esse non aggiungono informazione oltre il limite imposto dal filtro anti-alias dell'hardware originale. Al contrario, l'utilizzo di risoluzioni inferiori a $150$ DPI (corrispondenti a $f_s' \approx 147$ Hz) risulta insufficiente per rappresentare fedelmente i transienti ad alta frequenza del segnale ECG, come il complesso QRS.
+
+In accordo con il teorema di Nyquist-Shannon \cite{Nyquist1928}, per preservare lo spettro diagnostico tipico (fino a $100$ Hz), è raccomandata una risoluzione di almeno $200$ DPI per le operazioni di scansione e digitizzazione. Questo parametro è cruciale nella pipeline di \textit{data augmentation}: riducendo intenzionalmente i DPI, il sistema simula la perdita di dettagli tipica delle scansioni a bassa qualità o dei documenti deteriorati, permettendo di addestrare il modello a ricostruire i parametri clinici (come gli intervalli RR e QT) anche in condizioni di campionamento sub-ottimali.
 
 \subsection{Configurazione del Canvas Matplotlib}
 
@@ -115,7 +128,7 @@ fig, ax = plt.subplots(figsize=(width, height), dpi=resolution)
 fig.subplots_adjust(hspace=0, wspace=0, left=0, right=1, bottom=0, top=1)
 \end{minted}
 
-I margini vengono azzerati in modo che l'area di disegno occupi esattamente l'intera dimensione fisica specificata, senza bordi aggiuntivi introdotti da Matplotlib. Il padding bianco attorno all'immagine, quando richiesto, viene aggiunto \textit{a posteriori} tramite la libreria \texttt{Pillow}, estendendo il canvas con pixel bianchi per il numero di pollici specificato da \texttt{--pad\_inches}.
+I parametri \texttt{left=0}, \texttt{right=1}, \texttt{bottom=0}, \texttt{top=1} posizionano il subplot in modo che occupi l'intera figura nelle coordinate normalizzate (da 0 a 1), eliminando qualsiasi bordo interno introdotto da Matplotlib; \texttt{hspace=0} e \texttt{wspace=0} azzerano la spaziatura tra subplot multipli. Il padding bianco attorno all'immagine, quando richiesto, viene aggiunto \textit{a posteriori} tramite la libreria \texttt{Pillow}, estendendo il canvas con pixel bianchi per il numero di pollici specificato da \texttt{--pad\_inches}.
 
 \subsection{Posizionamento delle Derivazioni}
 
@@ -123,7 +136,7 @@ Per ogni derivazione nel vettore \texttt{lead\_index}, la funzione calcola le co
 
 \begin{itemize}
     \item \textbf{Posizione verticale (\texttt{y\_offset}):} calcolata come \texttt{initial\_y\_offset + (row\_idx * row\_height)}, dove \texttt{row\_height} è determinato in modo tale che tutte le derivazioni si distribuiscano uniformemente sull'altezza del canvas, tenendo conto del numero di righe e di un fattore di spaziatura verticale (\texttt{v\_space\_factor}).
-    \item \textbf{Posizione orizzontale (\texttt{x\_offset}):} calcolata come \texttt{current\_col * (secs + col\_gap)}, dove \texttt{col\_gap} è un parametro aggiunto per inserire un gap deterministico minimo tra le colonne.
+    \item \textbf{Posizione orizzontale (\texttt{x\_offset}):} calcolata come \texttt{current\_col * (secs + col\_gap)}, dove \texttt{col\_gap} è un parametro, opzionale, aggiunto per inserire un gap deterministico minimo tra le colonne.
 \end{itemize}
 
 Il segnale di ogni derivazione viene tracciato come una polilinea:
@@ -150,15 +163,16 @@ Le linee della griglia seguono le convenzioni cliniche: linee maggiori (passo 0.
 L'impulso di calibrazione (o \textit{DC pulse}) è un'onda quadra di ampiezza 1 mV e durata 0.2 secondi posizionata a sinistra di ogni derivazione. Esso è presente negli ECG clinici come riferimento per la taratura dell'ampiezza. Il sistema supporta due modalità:
 
 \begin{itemize}
-    \item \textbf{Single:} un unico impulso posizionato casualmente su una riga, con possibilità di clipping parziale (parametri \texttt{--prob\_pulse\_clip} e \texttt{--pulse\_clip\_fraction}).
+    \item \textbf{Single:} un unico impulso posizionato casualmente su una riga. È prevista la possibilità di clipping parziale, controllata da due parametri distinti: \texttt{--prob\_pulse\_clip} definisce la probabilità che l'impulso venga troncato, mentre \texttt{--pulse\_clip\_fraction} determina la percentuale dell'ampiezza che viene eliminata. Ad esempio, con \texttt{--pulse\_clip\_fraction 0.5} l'impulso viene tagliato a metà della sua altezza nominale, simulando i casi in cui l'impulso di calibrazione risulta parzialmente fuori campo nell'ECG acquisito.
     \item \textbf{Per lead:} un impulso per ogni derivazione, precedente al segnale.
 \end{itemize}
+%da aggiungere due immagini, una pulse completa e una clipped
 
 La probabilità che l'impulso sia presente in un'immagine è controllata da \texttt{--calibration\_pulse}. L'ampiezza e la durata dell'impulso sono parametrizzabili tramite \texttt{--dc\_pulse\_amplitude} e \texttt{--dc\_pulse\_duration}.
 
 \subsection{Augmentation Geometrica in Fase di Rendering}
 
-Un contributo originale apportato al sistema riguarda l'introduzione di perturbazioni geometriche direttamente nella fase di rendering, prima della rasterizzazione. Il parametro \texttt{--prob\_shift} controlla la probabilità che ciascun elemento visivo (derivazione, etichetta, impulso di calibrazione, colonna) venga traslato di una quantità casuale:
+Un contributo apportato al sistema riguarda l'introduzione di perturbazioni geometriche direttamente nella fase di rendering, prima della rasterizzazione. Il parametro \texttt{--prob\_shift} definisce una probabilità unica applicata in modo indipendente a ciascun elemento visivo: ogni derivazione, ogni colonna, ogni impulso di calibrazione e ogni etichetta viene campionato separatamente, in modo che la traslazione possa essere applicata solo ad alcuni elementi e non ad altri nella stessa immagine. Gli spostamenti massimi ammissibili sono configurabili per ciascun tipo di elemento:
 
 \begin{itemize}
     \item Traslazione verticale delle derivazioni: fino a \texttt{--max\_shift\_y} mV.
@@ -175,14 +189,14 @@ Per ogni derivazione, il sistema traccia la corrispondenza tra pixel dell'immagi
 
 \subsection{Generazione dell'Immagine Pulita}
 
-Il flag \texttt{--generate\_clean}, introdotto come estensione originale, abilita la generazione contestuale di una versione pulita di ogni immagine: sfondo bianco, nessuna griglia, nessun artefatto, solo i tracciati delle derivazioni in nero. Questa immagine costituisce la \textit{ground truth} visiva per task di segmentazione semantica, consentendo ai modelli di apprendere la separazione tra segnale e disturbi.
+Il flag \texttt{--generate\_clean}, introdotto come nuova fuonzionalità, abilita la generazione contestuale di una versione pulita di ogni immagine: sfondo bianco, nessuna griglia, nessun artefatto, solo i tracciati delle derivazioni in nero. Questa immagine costituisce la \textit{ground truth} visiva per task di segmentazione semantica, consentendo ai modelli di apprendere la separazione tra segnale e disturbi.
 
-\section{Output del Sistema e Configurazione JSON}
+\section{Output del Sistema e Configurazione JSON}\label{sec:output}
 
 Al termine della generazione di ogni immagine, il sistema produce i seguenti file:
 
 \begin{itemize}
-    \item \textbf{Immagine PNG sintetica:} il file immagine principale, con griglia, derivazioni, etichette e tutti gli artefatti richiesti.
+    \item \textbf{Immagine PNG sintetizzata:} il file immagine principale, con griglia, derivazioni, etichette e tutti gli artefatti richiesti.
     \item \textbf{Immagine PNG pulita (opzionale):} la ground truth visiva, priva di griglia e disturbi.
     \item \textbf{File WFDB aggiornato:} una copia dei file \texttt{.hea} e \texttt{.dat} che riflette la segmentazione temporale applicata, con i campioni non visualizzati eventualmente mascherati con \texttt{NaN}.
     \item \textbf{File JSON di configurazione (opzionale):} serializza i parametri utilizzati per generare l'immagine (risoluzione, DPI della griglia, presenza del pulse di calibrazione, colori, flag di augmentation), nonché le coordinate delle bounding box e i pixel plottati per ogni derivazione. Il livello di dettaglio è controllato dal parametro \texttt{--store\_config} (livello 1: attributi di alto livello; livello 2: informazioni complete).
@@ -194,7 +208,7 @@ La configurazione del sistema è stratificata su due livelli:
 
 \begin{itemize}
     \item \textbf{File YAML (\texttt{config.yaml}):} contiene i parametri statici della griglia (durata della carta, passo della griglia, layout delle derivazioni per i diversi formati). Questi valori, originariamente fissi nel codice, sono stati estratti in questo file di configurazione come contributo originale al progetto, rendendo il sistema più facilmente adattabile a standard clinici diversi da quello di default.
-    \item \textbf{Argomenti da riga di comando:} espongono oltre 50 parametri che controllano ogni aspetto della generazione, dal layout alla risoluzione, dai colori alle probabilità di applicazione di ciascun artefatto. I parametri con prefisso \texttt{--deterministic\_*} consentono di fissare il valore di un disturbo invece di campionarlo casualmente, utile per esperimenti ripetibili o per la generazione di dataset bilanciati.
+    \item \textbf{Argomenti da riga di comando:} espongono oltre 50 parametri che controllano ogni aspetto della generazione, dal layout alla risoluzione, dai colori alle probabilità di applicazione di ciascun artefatto. Un principio trasversale a quasi tutti i parametri è la dualità \textit{deterministico/casuale}. Numerosi parametri numerici — come l'intensità del rumore, il livello di compressione JPEG o il grado di sfocatura — non rappresentano un valore fisso ma una soglia massima: il valore effettivo applicato a ciascuna immagine viene campionato casualmente nell'intervallo $[0, \text{valore}]$, introducendo variabilità automatica nel dataset senza richiedere configurazioni per ogni run. Questo comportamento stocastico è il default; per ottenere un valore deterministico e riproducibile è sufficiente affiancare il corrispondente flag \texttt{--deterministic\_*} (ad esempio \texttt{--deterministic\_noise}, \texttt{--deterministic\_blur}), che forza l'uso esatto del valore specificato invece di campionarlo. Alcuni parametri accettano inoltre il valore speciale \texttt{random} per delegare la scelta a un campionamento uniforme tra le opzioni disponibili: ad esempio, \texttt{--layout random} seleziona un formato tra quelli supportati in modo equiprobabile, e \texttt{--random\_grid\_color} genera ad ogni immagine una combinazione cromatica casuale per la griglia.
 \end{itemize}
 
 Questa architettura a due livelli separa nettamente i parametri strutturali del formato ECG (invarianti) dai parametri operativi della generazione (variabili per ogni run), consentendo di lanciare esperimenti con diverse configurazioni senza modificare il codice sorgente.
