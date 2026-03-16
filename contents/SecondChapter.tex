@@ -180,7 +180,7 @@ Le linee della griglia seguono le convenzioni cliniche: linee maggiori (passo 0.
 L'impulso di calibrazione (o \textit{DC pulse}) è un'onda quadra di ampiezza 1 mV e durata 0.2 secondi posizionata a sinistra di ogni derivazione. Esso è presente negli ECG clinici come riferimento per la taratura dell'ampiezza. Il sistema supporta due modalità:
 
 \begin{itemize}
-    \item \textbf{Single:} un unico impulso posizionato casualmente su una riga. È prevista la possibilità di clipping parziale, controllata da due parametri distinti: \texttt{--prob\_pulse\_clip} definisce la probabilità che l'impulso venga troncato, mentre \texttt{--pulse\_clip\_fraction} determina la frazione della durata rimossa. Il lato di taglio (sinistro o destro) è scelto casualmente con probabilità uniforme, simulando i casi in cui l'onda quadra risulta parzialmente fuori campo nell'ECG acquisito.
+    \item \textbf{Single:} un unico impulso posizionato sul lato sinistro dell'immagine, verticalmente centrato con un piccolo offset casuale sull'asse $y$ e un piccolo offset casuale sull'asse $x$, in modo che al più si sovrapponga con l'inizio di una delle derivazioni. È prevista la possibilità di clipping parziale, controllata da due parametri distinti: \texttt{--prob\_pulse\_clip} definisce la probabilità che l'impulso venga troncato, mentre \texttt{--pulse\_clip\_fraction} determina la frazione della durata rimossa. Il taglio avviene sempre dal lato sinistro: la porzione rimossa fuoriesce dal bordo dell'immagine, simulando realisticamente un'onda quadra acquisita parzialmente fuori campo.
     \item \textbf{Per lead:} un impulso per ogni derivazione, precedente al segnale.
 \end{itemize}
 
@@ -194,7 +194,7 @@ L'impulso di calibrazione (o \textit{DC pulse}) è un'onda quadra di ampiezza 1 
     \hfill
     \begin{subfigure}[t]{0.48\textwidth}
         \includegraphics[width=\textwidth]{images/sample_pulse_clipped.png}
-        \caption{Impulso troncato (\texttt{--prob\_pulse\_clip}): il taglio avviene casualmente dal lato sinistro o destro, simulando un'acquisizione parzialmente fuori campo.}
+        \caption{Impulso troncato (\texttt{--prob\_pulse\_clip}): il taglio avviene sempre dal lato sinistro, con la porzione rimossa fuori dal bordo dell'immagine, simulando un'acquisizione parzialmente fuori campo.}
         \label{fig:pulse_clipped}
     \end{subfigure}
     \caption{Confronto tra impulso di calibrazione completo e clippato.}
@@ -210,7 +210,8 @@ Un contributo apportato al sistema riguarda l'introduzione di perturbazioni geom
 \begin{itemize}
     \item Traslazione verticale delle derivazioni: fino a \texttt{--max\_shift\_y} mV.
     \item Traslazione orizzontale delle colonne: fino a \texttt{--max\_shift\_col\_x} secondi.
-    \item Traslazione dell'impulso di calibrazione: fino a \texttt{--max\_shift\_pulse}.
+    \item Traslazione orizzontale dell'impulso di calibrazione: fino a \texttt{--max\_shift\_pulse\_x}.
+    \item Traslazione verticale dell'impulso di calibrazione: fino a \texttt{--max\_shift\_pulse\_y}.
     \item Traslazione dell'etichetta della derivazione: fino a \texttt{--max\_shift\_name}.
 \end{itemize}
 
@@ -218,11 +219,11 @@ Questi spostamenti simulano le irregolarità di allineamento tipiche dei sistemi
 
 \subsection{Annotazioni e Bounding Box}
 
-Per ogni derivazione, il sistema traccia la corrispondenza tra pixel dell'immagine e campioni del segnale, memorizzando le coordinate pixel di ogni punto plottato nel dizionario \texttt{json\_dict}. Sono inoltre disponibili le \textit{bounding box} rettangolari che delimitano sia il tracciato del segnale (\texttt{--lead\_bbox}) che l'etichetta testuale (\texttt{--lead\_name\_bbox}). Queste annotazioni vengono serializzate in un file JSON per ogni immagine generata, rendendo il dataset utilizzabile direttamente per task di object detection e di digitizzazione supervisionata.
+Per ogni derivazione, il sistema traccia la corrispondenza tra pixel dell'immagine e campioni del segnale, memorizzando le coordinate pixel di ogni punto plottato nel dizionario \texttt{json\_dict}. Sono inoltre disponibili le \textit{bounding box} rettangolari che delimitano sia il tracciato del segnale (\texttt{--lead\_bbox}) che l'etichetta testuale (\texttt{--lead\_name\_bbox}). Ogni bounding box viene serializzata nel JSON con il formato asse-allineato \texttt{\{x1, y1, x2, y2\}}, dove \texttt{(x1,~y1)} è il vertice in alto a sinistra e \texttt{(x2,~y2)} quello in basso a destra, in coordinate pixel con origine in alto a sinistra dell'immagine. Queste annotazioni vengono serializzate in un file JSON per ogni immagine generata, rendendo il dataset utilizzabile direttamente per task di object detection e di digitizzazione supervisionata.
 
 \subsection{Generazione dell'Immagine Pulita}
 
-Il flag \texttt{--generate\_clean}, introdotto come nuova fuonzionalità, abilita la generazione contestuale di una versione pulita di ogni immagine: sfondo bianco, nessuna griglia, nessun artefatto, solo i tracciati delle derivazioni in nero. Questa immagine costituisce la \textit{ground truth} visiva per task di segmentazione semantica, consentendo ai modelli di apprendere la separazione tra segnale e disturbi.
+Il flag \texttt{--generate\_clean}, introdotto come nuova funzionalità, abilita la generazione contestuale di una versione pulita di ogni immagine: sfondo nero (tutti i pixel a 0) e tracciati bianchi (tutti i pixel a 1), senza griglia né artefatti. Le stesse trasformazioni geometriche applicate all'immagine principale — shift delle derivazioni, rotazione — vengono replicate sull'immagine pulita, garantendo la corrispondenza pixel-per-pixel tra le due. Questa immagine costituisce la \textit{ground truth} visiva per task di segmentazione semantica, consentendo ai modelli di apprendere la separazione tra segnale e disturbi.
 
 \section{Output del Sistema e Configurazione JSON}\label{sec:output}
 

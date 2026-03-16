@@ -89,7 +89,7 @@ Le figure seguenti mostrano esempi rappresentativi dell'output prodotto dal sist
     \hfill
     \begin{subfigure}[t]{0.48\textwidth}
         \includegraphics[width=\textwidth]{images/sample_clean.png}
-        \caption{Ground truth visiva (\texttt{--generate\_clean}): solo tracciati in nero su sfondo bianco.}
+        \caption{Ground truth visiva (\texttt{--generate\_clean}): solo tracciati in bianco su sfondo nero.}
         \label{fig:sample_clean}
     \end{subfigure}
     \caption{Confronto tra immagine sintetica e corrispondente ground truth.}
@@ -338,7 +338,7 @@ Per ogni record ECG elaborato il sistema produce i seguenti file nella directory
 
 \begin{itemize}
     \item \textbf{Immagine PNG sintetica} (\texttt{<id>\_lr-<n>.png}): l'immagine principale con griglia, tracciati, etichette e tutti gli artefatti configurati. Il suffisso \texttt{-<n>} (a partire da 0) distingue le varianti generate dallo stesso record.
-    \item \textbf{Immagine PNG pulita} (\texttt{<id>\_lr-<n>\_clean.png}, opzionale): la ground truth visiva, generata quando \texttt{--generate\_clean} è attivo. Contiene solo i tracciati in nero su sfondo bianco, senza griglia né artefatti.
+    \item \textbf{Immagine PNG pulita} (\texttt{<id>\_lr-<n>\_clean.png}, opzionale): la ground truth visiva, generata quando \texttt{--generate\_clean} è attivo. Contiene solo i tracciati in bianco su sfondo nero, senza griglia né artefatti, con le stesse trasformazioni geometriche dell'immagine principale.
     \item \textbf{File WFDB aggiornati} (\texttt{<id>\_lr.hea} e \texttt{<id>\_lr.dat}): copia dei file di segnale originali con la segmentazione temporale applicata e, se \texttt{--mask\_unplotted\_samples} è attivo, i campioni non rappresentati mascherati con \texttt{NaN}.
     \item \textbf{File JSON di configurazione} (\texttt{<id>\_lr-<n>.json}, opzionale): serializza i parametri di generazione e le annotazioni geometriche (bounding box delle derivazioni e dei nomi, coordinate pixel dei segnali plottati) secondo il livello di dettaglio configurato tramite \texttt{--store\_config}.
 \end{itemize}
