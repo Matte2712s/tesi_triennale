@@ -206,17 +206,24 @@ La sfocatura viene implementata tramite \textbf{convoluzione spaziale} con il ke
 \paragraph{Controllo della luminosità.} \texttt{iaa.Multiply(brightness)} moltiplica tutti i valori di pixel per il fattore \texttt{brightness} (default: 1.0, nessuna variazione). Valori inferiori a 1.0 simulano documenti sottoesposti o scansioni con calibrazione del bianco errata; valori superiori a 1.0 simulano sovraesposizione. Applicato dopo la compressione JPEG, agisce sull'immagine già degradata, amplificando o attenuando anche gli artefatti di compressione.
 
 \section{Propagazione delle Annotazioni attraverso la Pipeline}
+\label{sec:propagazione}
 
 Un aspetto critico dell'implementazione è il mantenimento della coerenza tra le trasformazioni applicate all'immagine e le annotazioni (bounding box e pixel plottati) memorizzate nel file JSON. Il modulo \texttt{augment.py} gestisce questo problema in modo esplicito:
 
 \begin{enumerate}
-    \item Le bounding box delle derivazioni (\texttt{lead\_bbs}) e delle etichette (\texttt{leadNames\_bbs}) vengono convertite in oggetti \texttt{BoundingBoxesOnImage} della libreria \texttt{imgaug}, che le aggancia alla forma dell'immagine.
-    \item Dopo la rotazione, le coordinate delle bounding box vengono aggiornate tramite \texttt{rotate\_bounding\_box()}, che applica la matrice di rotazione 2D con centro nell'origine dell'immagine.
+    \item Le bounding box delle derivazioni (\texttt{lead\_bbs}) e delle etichette (\texttt{leadNames\_bbs}) vengono lette dal JSON nel formato a quattro corner points \texttt{[[x1,y1],\allowbreak[x2,y1],\allowbreak[x2,y2],\allowbreak[x1,y2]]} tramite la funzione \texttt{read\_leads()} in \allowbreak\texttt{helper\_functions.py}, che converte le coordinate dall'ordine \texttt{[x,~y]} del JSON al formato interno \texttt{[y,~x]} utilizzato dalla pipeline di rotazione.
+    \item Dopo la rotazione, le coordinate dei quattro corner points di ogni bounding box vengono aggiornate individualmente tramite \texttt{rotate\_bounding\_box()}, che applica la matrice di rotazione 2D con centro nell'origine dell'immagine. Poiché tutti e quattro i punti vengono ruotati separatamente, il risultato non è più un rettangolo asse-allineato bensì un poligono orientato che rispecchia fedelmente la posizione reale del riquadro dopo la trasformazione geometrica.
     \item Le coordinate pixel dei segnali plottati vengono aggiornate tramite \texttt{rotate\_points()}.
-    \item Le bounding box aggiornate vengono riscritte nel dizionario JSON tramite \texttt{convert\_bounding\_boxes\_to\_dict()}.
+    \item Le bounding box aggiornate vengono riscritte nel dizionario JSON tramite \texttt{convert\_bounding\_boxes\_to\_dict()} in \texttt{helper\_functions.py}, che serializza i quattro corner points in coordinate \texttt{[x,~y]} — ripristinando l'ordine delle coordinate del formato JSON — per entrambe le tipologie di bounding box (\texttt{lead\_bounding\_box} e \texttt{text\_bounding\_box}).
 \end{enumerate}
 
-Questo meccanismo garantisce che i file di annotazione prodotti rimangano validi e utilizzabili per il training supervisionato anche dopo l'applicazione della pipeline di augmentation, evitando il disallineamento tra immagine e label che invaliderebbe l'intero dataset.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{images/bbox_example.png}
+\caption{Esempio di bounding box delle derivazioni e delle etichette dopo la propagazione attraverso la pipeline di augmentation.}
+\label{fig:bbox_example}
+\end{figure}
 
 \section{Orchestrazione degli Artefatti e Varietà del Dataset}
 
