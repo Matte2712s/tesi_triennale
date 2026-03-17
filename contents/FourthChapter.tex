@@ -16,6 +16,8 @@ I benchmark riportati in questo capitolo sono stati eseguiti sulla seguente conf
     \item \textbf{TensorFlow:} 2.x (modalità compatibilità TF1, esecuzione CPU-only)
 \end{itemize}
 
+Per facilitare la riproducibilità e semplificare il deployment su sistemi eterogenei, il sistema è stato distribuito anche come immagine Docker, eliminando la necessità di configurare manualmente le dipendenze.
+
 \subsection{Dataset di Input: PTB-XL}
 
 Il dataset utilizzato come sorgente dei segnali ECG è \textbf{PTB-XL}~\cite{PhysioNet-ptb-xl-1.0.3}, una raccolta pubblica disponibile su PhysioNet contenente 21\,799 registrazioni ECG a 12 derivazioni della durata di 10 secondi ciascuna, acquisite su 18\,869 pazienti. Ogni registrazione è distribuita nel formato WFDB con frequenza di campionamento di 500 Hz (o 100 Hz nella versione a bassa risoluzione) e accompagnata da metadati clinici (età, sesso, diagnosi codificata secondo lo standard SCP-ECG \cite{7868741}) in un file CSV condiviso.
