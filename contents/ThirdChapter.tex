@@ -141,23 +141,28 @@ Il sistema genera separatamente pieghe con angolo $\theta$ (\texttt{-nh} pieghe)
 
 \subsection{Struttura della Pipeline}
 
-Il modulo \texttt{ImageAugmentation/augment.py} applica all'immagine una sequenza di trasformazioni tramite la libreria \texttt{imgaug}~\cite{imgaug}, organizzate in un oggetto \texttt{iaa.Sequential}. Nella repository originale il modulo comprendeva quattro trasformazioni: rotazione affine, rumore gaussiano additivo, crop e variazione di temperatura cromatica. In questo lavoro la pipeline è stata estesa con cinque nuove trasformazioni — dropout di pixel, sfocatura gaussiana, rumore sale e pepe, compressione JPEG e controllo della luminosità — e la rotazione è stata corretta per riempire le aree vuote con pixel bianchi anziché neri. La pipeline risultante è:
+Il modulo \texttt{ImageAugmentation/augment.py} applica all'immagine una sequenza di trasformazioni tramite la libreria \texttt{imgaug}~\cite{imgaug}, organizzate in un oggetto \texttt{iaa.Sequential}. Nella repository originale il modulo comprendeva quattro trasformazioni: rotazione affine, rumore gaussiano additivo, crop e variazione di temperatura cromatica. In questo lavoro la pipeline è stata estesa con cinque nuove trasformazioni — dropout di pixel, sfocatura gaussiana, rumore sale e pepe, compressione JPEG e controllo della luminosità — e la rotazione è stata corretta per riempire le aree vuote con pixel bianchi anziché neri. La pipeline risultante è strutturata in due stadi separati:
 
 \begin{minted}{python}
+# Rotazione + dropout differenziale (custom)
+seq_rot = iaa.Sequential([iaa.Affine(rotate=rot, cval=255)])
+images_rot = seq_rot(images=images)
+# ... costruzione maschera lead + binary_dilation + applicazione dropout ...
+
+# Restanti trasformazioni (imgaug)
 seq = iaa.Sequential([
-    iaa.Affine(rotate=rot, cval=255),          # originale, corretto
-    iaa.ReplaceElementwise(dropout, 255),       # nuovo
     iaa.GaussianBlur(sigma=blur),               # nuovo
     iaa.SaltAndPepper(p=salt_pepper),           # nuovo
-    iaa.AdditiveGaussianNoise(scale=gaussian_noise * 255),  # originale, rip.
+    iaa.AdditiveGaussianNoise(scale=gaussian_noise * 255),  # originale
     iaa.Multiply(brightness),                   # nuovo
     iaa.Crop(percent=crop_sample),              # originale
     iaa.JpegCompression(compression=jpeg_compression * 100),# nuovo
     iaa.ChangeColorTemperature(temperature)     # originale
 ])
+images_aug = seq(images=images_rot)
 \end{minted}
 
-L'ordine rispecchia il ciclo di vita fisico del documento: la rotazione geometrica apre la sequenza perché l'interpolazione affine non deve agire su immagini già rumorose; i disturbi del sensore (dropout, blur, rumore) simulano la fase di acquisizione; il crop segue, rappresentando il ritaglio imperfetto della scansione; la compressione JPEG viene applicata \textit{dopo} il crop, simulando il salvataggio in formato compresso dell'immagine già acquisita — che è lo scenario più comune nell'archiviazione digitale dei documenti clinici; la temperatura cromatica chiude la pipeline agendo sull'immagine completamente degradata.
+L'ordine rispecchia il ciclo di vita fisico del documento: la rotazione geometrica apre la sequenza perché l'interpolazione affine non deve agire su immagini già rumorose; il dropout differenziale segue immediatamente la rotazione, prima di qualsiasi altra degradazione, in modo da operare su coordinate pixel accurate; i restanti disturbi del sensore (blur, rumore) simulano la fase di acquisizione; il crop segue, rappresentando il ritaglio imperfetto della scansione; la compressione JPEG viene applicata \textit{dopo} il crop, simulando il salvataggio in formato compresso dell'immagine già acquisita — che è lo scenario più comune nell'archiviazione digitale dei documenti clinici; la temperatura cromatica chiude la pipeline agendo sull'immagine completamente degradata.
 
 \subsection{Trasformazioni Pre-esistenti}
 
@@ -171,7 +176,24 @@ L'ordine rispecchia il ciclo di vita fisico del documento: la rotazione geometri
 
 \subsection{Nuove Trasformazioni Introdotte}
 
-\paragraph{Dropout di pixel.} \texttt{iaa.ReplaceElementwise(mask=dropout, replacement=255)} sostituisce casualmente una frazione \texttt{dropout} (default: 0.02, ovvero il 2\%) dei pixel con bianco puro. Questo artefatto simula i \textit{pixel morti} dei sensori CCD invecchiati e i difetti di stampa in cui alcune porzioni del foglio rimangono non inchiostrate. Sostituire con bianco anziché con un valore casuale è coerente con la natura dello sfondo del documento.
+\paragraph{Dropout di pixel differenziale.} Il dropout è una tecnica di degradazione che consiste nel sostituire casualmente alcuni pixel dell'immagine con il bianco puro (valore 255). Nella pratica, questo simula due fenomeni fisici reali: i \textit{pixel morti} dei sensori CCD invecchiati degli scanner, che smettono di registrare il segnale e appaiono come macchie bianche, e i difetti di stampa, in cui alcune zone del foglio non vengono inchiostrate correttamente.
+
+Il dropout non era presente nella versione originale del generatore. In questo lavoro viene introdotto come tecnica di degradazione \textbf{differenziale}, ovvero con due probabilità distinte: \texttt{--dropout\_lead} per i pixel che appartengono alle curve ECG, e \texttt{--dropout} per tutti gli altri (sfondo e griglia). Impostando \texttt{--dropout\_lead} a un valore basso e \texttt{--dropout} a un valore alto si ottiene uno sfondo visibilmente degradato ma un tracciato ancora leggibile, replicando situazioni reali in cui la carta è deteriorata ma l'inchiostro del tratto è resistito nel tempo. Viceversa, valori più alti di \texttt{--dropout\_lead} simulano la situazione opposta, in cui è l'inchiostro del tracciato a essere più soggetto a usura.
+
+Per applicare questa distinzione, è necessario sapere quali pixel appartengono al tracciato e quali no. Le coordinate dei pixel disegnati vengono recuperate dal dizionario JSON generato in fase di rendering (campo \texttt{plotted\_pixels}), già aggiornate per tenere conto di eventuali rotazioni. Tuttavia, queste coordinate rappresentano solo la linea centrale del tratto: un tratto di penna ha uno spessore, non è una linea matematicamente sottile. Per identificare tutti i pixel coperti dal tratto — e non solo il suo asse centrale — la maschera viene espansa morfologicamente tramite \texttt{scipy.ndimage.binary\_dilation}, che ``gonfia'' la linea centrale fino a coprire un'area larga quanto il tratto reale. Il raggio di questa espansione è calcolato convertendo la larghezza del tratto (espressa in punti tipografici) in pixel in base alla risoluzione dell'immagine (DPI):
+\[
+r = \left\lceil \frac{w_{\text{pt}} \cdot \text{DPI}}{72 \cdot 2} \right\rceil
+\]
+dove $w_{\text{pt}}$ è la larghezza in punti tipografici, DPI è la risoluzione dell'immagine e il fattore $72$ converte i punti in pollici (1 pollice = 72 punti). Il denominatore 2 dimezza il valore perché $r$ è il raggio, non il diametro del tratto.
+
+Una volta costruita la maschera, a ogni pixel viene assegnata la probabilità di dropout corrispondente alla sua categoria, e il dropout viene applicato in un unico passaggio confrontando una matrice di numeri casuali con la matrice delle probabilità: ogni pixel per cui il numero casuale è inferiore alla soglia viene impostato a bianco.
+
+I parametri che controllano il dropout differenziale sono:
+\begin{itemize}
+    \item \textbf{\texttt{--dropout}}: probabilità di sostituzione con bianco per i pixel di sfondo e griglia (default: 0.02).
+    \item \textbf{\texttt{--dropout\_lead}}: probabilità di sostituzione con bianco per i pixel dei tracciati ECG (default: 0.02). Se impostato a un valore inferiore a \texttt{--dropout}, protegge il segnale clinicamente rilevante da un dropout eccessivo sullo sfondo; se impostato a un valore superiore, simula situazioni in cui l'inchiostro del tracciato è soggetto a deterioramento più marcato rispetto allo sfondo.
+    \item \textbf{\texttt{--deterministic\_dropout}}, \textbf{\texttt{--deterministic\_dropout\_lead}}: fissano deterministicamente i rispettivi valori di probabilità invece di campionarli casualmente ad ogni esecuzione.
+\end{itemize}
 
 \paragraph{Sfocatura gaussiana.} \texttt{iaa.GaussianBlur(sigma=blur)} applica una convoluzione gaussiana con deviazione standard \texttt{blur} (default: 0.5 pixel). Simula la perdita di messa a fuoco tipica degli scanner a bassa qualità e delle fotografie con profondità di campo ridotta. A differenza del rumore gaussiano additivo, che agisce indipendentemente su ogni pixel, la sfocatura introduce correlazione spaziale tra pixel vicini, producendo un effetto visivamente distinto.
 
