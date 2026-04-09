@@ -12,9 +12,9 @@ Il task è intrinsecamente difficile per tre ragioni. In primo luogo, i tracciat
 
 \subsection{U-Net con Encoder Transformer}
 
-Il modello adottato è una \textbf{U-Net}~\cite{ronneberger2015unet}, l'architettura di riferimento per la segmentazione semantica di immagini biomedicali. La U-Net è una rete encoder-decoder completamente convoluzionale caratterizzata da connessioni skip che collegano ogni livello dell'encoder al corrispondente livello del decoder: queste connessioni trasmettono direttamente le feature maps ad alta risoluzione dell'encoder al decoder, permettendo a quest'ultimo di recuperare i dettagli spaziali fini che si perderebbero durante la progressiva riduzione di risoluzione.
+Il modello adottato è una \textbf{U-Net}~\cite{ronneberger2015unetconvolutionalnetworksbiomedical}, l'architettura di riferimento per la segmentazione semantica di immagini biomedicali. La U-Net è una rete encoder-decoder completamente convoluzionale caratterizzata da connessioni skip che collegano ogni livello dell'encoder al corrispondente livello del decoder: queste connessioni trasmettono direttamente le feature maps ad alta risoluzione dell'encoder al decoder, permettendo a quest'ultimo di recuperare i dettagli spaziali fini che si perderebbero durante la progressiva riduzione di risoluzione.
 
-L'implementazione utilizza la libreria \texttt{segmentation-models-pytorch}~\cite{Iakubovskii2019} tramite la classe \texttt{smp.Unet}, configurata con i seguenti parametri:
+L'implementazione utilizza la libreria \texttt{segmentation-models-pytorch}~\cite{Iakubovskii:2019} tramite la classe \texttt{smp.Unet}, configurata con i seguenti parametri:
 
 \begin{itemize}
     \item \textbf{Encoder:} \texttt{mit-b4} (Mix Transformer, variante B4), con pesi pre-addestrati su ImageNet. Il backbone può essere sostituito tramite il parametro \texttt{--encoder}.
@@ -23,11 +23,11 @@ L'implementazione utilizza la libreria \texttt{segmentation-models-pytorch}~\cit
     \item \textbf{Tipo di attenzione nel decoder:} \texttt{scse} (Squeeze-and-Excitation concorrente).
 \end{itemize}
 
-L'encoder \texttt{mit-b4} appartiene alla famiglia \textit{Mix Transformer} (MiT)~\cite{xie2021segformer}, un'architettura ibrida CNN-Transformer progettata specificamente per la segmentazione. A differenza dei Vision Transformer puri, MiT utilizza un'attenzione ridotta in risoluzione gerarchica: la sequenza di patch su cui opera l'attenzione viene progressivamente decimata a ogni stadio, riducendo il costo computazionale pur mantenendo il campo ricettivo globale tipico dei Transformer. Rispetto ai backbone CNN tradizionali, \texttt{mit-b4} offre una migliore capacità di modellare dipendenze a lungo raggio — essenziale per seguire tracciati ECG che percorrono l'intera larghezza dell'immagine — senza sacrificare la precisione locale sulle strutture sottili.
+L'encoder \texttt{mit-b4} appartiene alla famiglia \textit{Mix Transformer} (MiT)~\cite{xie2021segformersimpleefficientdesign}, un'architettura ibrida CNN-Transformer progettata specificamente per la segmentazione. A differenza dei Vision Transformer puri, MiT utilizza un'attenzione ridotta in risoluzione gerarchica: la sequenza di patch su cui opera l'attenzione viene progressivamente decimata a ogni stadio, riducendo il costo computazionale pur mantenendo il campo ricettivo globale tipico dei Transformer. Rispetto ai backbone CNN tradizionali, \texttt{mit-b4} offre una migliore capacità di modellare dipendenze a lungo raggio — essenziale per seguire tracciati ECG che percorrono l'intera larghezza dell'immagine — senza sacrificare la precisione locale sulle strutture sottili.
 
 \subsection{Decoder con Attenzione scSE}
 
-Il decoder è augmentato con il meccanismo di attenzione \textbf{scSE} (\textit{Concurrent Spatial and Channel Squeeze \& Excitation})~\cite{roy2018concurrent}. Il blocco scSE combina due meccanismi di ricalibrazione applicati in parallelo:
+Il decoder è augmentato con il meccanismo di attenzione \textbf{scSE} (\textit{Concurrent Spatial and Channel Squeeze \& Excitation})~\cite{roy2018concurrentspatialchannelsqueeze}. Il blocco scSE combina due meccanismi di ricalibrazione applicati in parallelo:
 
 \begin{itemize}
     \item \textbf{Channel Squeeze \& Excitation (cSE):} Esegue una pooling globale spaziale per ottenere un descrittore per canale, lo processa attraverso due layer fully-connected con attivazione ReLU e sigmoid, e moltiplica le feature maps originali per i pesi risultanti. Questo permette alla rete di enfatizzare i canali più informativi per la segmentazione dei tracciati e sopprimere quelli irrilevanti.
@@ -36,15 +36,15 @@ Il decoder è augmentato con il meccanismo di attenzione \textbf{scSE} (\textit{
 
 I due output vengono sommati elemento per elemento, combinando la ricalibrazione per canale con quella spaziale. Il meccanismo scSE è particolarmente vantaggioso per la segmentazione di strutture sottili come i tracciati ECG: la componente spaziale può apprendere a sopprimere le regioni di griglia e sfondo, mentre quella per canale seleziona le feature più discriminative tra tracciato e artefatti.
 
-\subsection{Funzione di Perdita: Dice + BCE}
+\subsection{Funzione di Perdita: Dice + BCE + clDice}
 
-La funzione di perdita è la somma di due contributi complementari:
+La funzione di perdita è la somma di tre contributi complementari:
 
 \[
-    \mathcal{L} = \mathcal{L}_{\text{Dice}} + \mathcal{L}_{\text{BCE}}
+    \mathcal{L} = \mathcal{L}_{\text{Dice}} + \mathcal{L}_{\text{BCE}} + \mathcal{L}_{\text{clDice}}
 \]
 
-La \textbf{Dice Loss}~\cite{milletari2016vnet} è definita come:
+La \textbf{Dice Loss}~\cite{sudre2017generalised} è definita come:
 
 \[
     \mathcal{L}_{\text{Dice}} = 1 - \frac{2 \sum_i p_i g_i}{\sum_i p_i + \sum_i g_i}
@@ -52,7 +52,33 @@ La \textbf{Dice Loss}~\cite{milletari2016vnet} è definita come:
 
 dove $p_i$ è la probabilità predetta per il pixel $i$ e $g_i$ è il valore della ground truth ($0$ o $1$). La Dice Loss è insensibile allo sbilanciamento tra classi — fondamentale in questo contesto, in cui i pixel di tracciato rappresentano tipicamente meno del 5\% dell'immagine — e ottimizza direttamente una metrica di overlap tra maschera predetta e ground truth.
 
-La \textbf{Binary Cross-Entropy with Logits Loss} ($\mathcal{L}_{\text{BCE}}$) opera direttamente sugli output raw (logits) del modello prima dell'attivazione sigmoid, offrendo maggiore stabilità numerica rispetto alla BCE standard. Il suo gradiente è distribuito uniformemente su tutti i pixel, inclusi quelli dello sfondo, bilanciando l'ottimizzazione globale con quella locale fornita dalla Dice Loss. La combinazione delle due perdite è una scelta consolidata nella letteratura di segmentazione biomedicale~\cite{jadon2020survey}.
+La \textbf{Binary Cross-Entropy with Logits Loss} ($\mathcal{L}_{\text{BCE}}$) opera direttamente sugli output raw (logits) del modello prima dell'attivazione sigmoid, offrendo maggiore stabilità numerica rispetto alla BCE standard. Il suo gradiente è distribuito uniformemente su tutti i pixel, inclusi quelli dello sfondo, bilanciando l'ottimizzazione globale con quella locale fornita dalla Dice Loss. La combinazione delle due perdite è una scelta consolidata nella letteratura di segmentazione biomedicale~\cite{isensee2021nnunet}.
+
+La \textbf{centerline Dice Loss} ($\mathcal{L}_{\text{clDice}}$) è introdotta da Shit et al.~\cite{Shit_2021} specificamente per strutture tubulari e filiformi. La motivazione è che Dice e BCE ottimizzano la correttezza pixel per pixel, ma non penalizzano le interruzioni topologiche della maschera predetta: una predizione con piccole lacune nel tracciato può avere una Dice Loss bassa pur essendo inutilizzabile per la ricostruzione numerica del segnale, poiché le discontinuità rendono ambigua la continuazione della curva.
+
+La clDice opera sul \textit{soft skeleton} di predizione e ground truth, una versione differenziabile della scheletrizzazione morfologica. Il soft skeleton $\mathcal{S}(M)$ di una mappa $M$ è ottenuto iterando la composizione di erosione morbida e apertura morbida:
+
+\[
+    \mathcal{S}^{(0)}(M) = \mathrm{ReLU}\!\left(M - \widetilde{\mathcal{O}}(M)\right), \qquad
+    \mathcal{S}^{(t)}(M) = \mathcal{S}^{(t-1)}(M) + \mathrm{ReLU}\!\left(\delta^{(t)} - \mathcal{S}^{(t-1)}(M)\cdot\delta^{(t)}\right)
+\]
+
+dove $\widetilde{\mathcal{O}} = \widetilde{\mathcal{D}} \circ \widetilde{\mathcal{E}}$ è l'apertura morbida (composizione di erosione e dilatazione morbida realizzate tramite max-pooling), e $\delta^{(t)} = \mathrm{ReLU}(\widetilde{\mathcal{E}}^t(M) - \widetilde{\mathcal{O}}(\widetilde{\mathcal{E}}^t(M)))$ è il contributo dell'iterazione $t$. L'implementazione utilizza 10 iterazioni.
+
+La clDice è definita come:
+
+\[
+    \mathcal{L}_{\text{clDice}} = 1 - \frac{2 \cdot T_{\text{prec}} \cdot T_{\text{sens}}}{T_{\text{prec}} + T_{\text{sens}}}
+\]
+
+con
+
+\[
+    T_{\text{prec}} = \frac{\sum_i \mathcal{S}(\hat{p})_i \cdot g_i + \epsilon}{\sum_i \mathcal{S}(\hat{p})_i + \epsilon}, \qquad
+    T_{\text{sens}} = \frac{\sum_i \mathcal{S}(g)_i \cdot \hat{p}_i + \epsilon}{\sum_i \mathcal{S}(g)_i + \epsilon}
+\]
+
+dove $\hat{p} = \sigma(\text{logits})$ è la predizione dopo sigmoid e $\epsilon = 1$ è un termine di smoothing. $T_{\text{prec}}$ misura quanta parte dello scheletro predetto è coperta dalla ground truth (precisione topologica), mentre $T_{\text{sens}}$ misura quanta parte dello scheletro della ground truth è coperta dalla predizione (sensibilità topologica). Minimizzare $\mathcal{L}_{\text{clDice}}$ spinge il modello a produrre maschere con continuità topologica, riducendo le lacune nei tracciati che comprometterebbero la successiva ricostruzione numerica del segnale.
 
 \section{Preparazione del Dataset}
 
@@ -101,7 +127,7 @@ Il metodo \texttt{\_\_getitem\_\_} esegue le seguenti operazioni per ogni indice
 
 \subsection{Augmentation con Albumentations}
 
-Il preprocessing delle immagini utilizza la libreria \texttt{albumentations}~\cite{buslaev2020albumentations}, che garantisce la coerenza spaziale tra trasformazioni applicate all'immagine e alla maschera corrispondente. La pipeline di trasformazione, costruita dalla funzione \texttt{get\_transform()}, comprende:
+Il preprocessing delle immagini utilizza la libreria \texttt{albumentations}~\cite{info11020125}, che garantisce la coerenza spaziale tra trasformazioni applicate all'immagine e alla maschera corrispondente. La pipeline di trasformazione, costruita dalla funzione \texttt{get\_transform()}, comprende:
 
 \begin{itemize}
     \item \textbf{Resize opzionale} (\texttt{A.Resize}): ridimensiona immagine e maschera a una risoluzione quadrata configurabile tramite \texttt{--resize}. Disabilitato di default; utile per ridurre l'occupazione di VRAM a scapito della precisione sulla segmentazione di tracciati sottili.
@@ -113,7 +139,7 @@ Il preprocessing delle immagini utilizza la libreria \texttt{albumentations}~\ci
 
 \subsection{Motivazione}
 
-Il \textit{curriculum learning}~\cite{bengio2009curriculum} è una strategia di addestramento ispirata al processo pedagogico umano: il modello viene esposto prima agli esempi più semplici e progressivamente a quelli più complessi. Questa strategia è particolarmente efficace quando il dataset presenta una forte varianza di difficoltà, come nel caso delle immagini ECG sintetiche: un modello addestrato dall'inizio su immagini con tutti gli artefatti fatica a convergere, mentre uno che ha prima consolidato la struttura del segnale su immagini pulite generalizza meglio in seguito.
+Il \textit{curriculum learning}~\cite{10.1145/1553374.1553380} è una strategia di addestramento ispirata al processo pedagogico umano: il modello viene esposto prima agli esempi più semplici e progressivamente a quelli più complessi. Questa strategia è particolarmente efficace quando il dataset presenta una forte varianza di difficoltà, come nel caso delle immagini ECG sintetiche: un modello addestrato dall'inizio su immagini con tutti gli artefatti fatica a convergere, mentre uno che ha prima consolidato la struttura del segnale su immagini pulite generalizza meglio in seguito.
 
 \subsection{Le Tre Fasi di Addestramento}
 
