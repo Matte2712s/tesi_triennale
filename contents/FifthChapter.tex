@@ -1,0 +1,241 @@
+\chapter{Estrazione del Segnale ECG tramite Segmentazione Semantica}
+
+Il presente capitolo descrive il modulo \texttt{ecg-signal-extractor}, che implementa la pipeline di addestramento di un modello di segmentazione semantica per l'estrazione dei tracciati ECG dalle immagini sintetiche prodotte dal generatore. Il modulo costituisce il secondo stadio della pipeline complessiva: a partire dalle coppie immagine sintetica / ground truth generate con il flag \texttt{--generate\_clean}, addestra un modello neurale capace di isolare i tracciati del segnale dalla griglia, dagli artefatti e dallo sfondo.
+
+\section{Obiettivo e Collocazione nel Progetto}
+
+Il generatore descritto nei capitoli precedenti produce immagini ECG sintetiche realistiche accompagnate dalla corrispondente ground truth visiva: un'immagine binaria in cui i pixel bianchi rappresentano esclusivamente i tracciati del segnale, senza griglia né artefatti. Questa coppia costituisce l'input ideale per addestrare un modello di \textit{segmentazione semantica}, il cui obiettivo è apprendere la mappatura inversa: data un'immagine ECG con tutti i suoi artefatti, produrre una maschera binaria che individui i pixel appartenenti al tracciato.
+
+Il task è intrinsecamente difficile per tre ragioni. In primo luogo, i tracciati ECG sono strutture sottili — spesso di pochi pixel di spessore — disperse su un'area molto estesa; una piccola imprecisione della maschera predetta si traduce in un errore sistematico nella ricostruzione numerica del segnale. In secondo luogo, la griglia millimetrata condivide alcune caratteristiche visive con i tracciati (linee sottili, orientamento misto orizzontale-verticale), rendendo la discriminazione non banale. In terzo luogo, gli artefatti applicati dal generatore — pieghe, testo manoscritto, rumore fotometrico — modificano localmente l'aspetto del segnale, richiedendo che il modello sia robusto a una vasta gamma di condizioni degradate.
+
+\section{Architettura del Modello}
+
+\subsection{U-Net con Encoder Transformer}
+
+Il modello adottato è una \textbf{U-Net}~\cite{ronneberger2015unet}, l'architettura di riferimento per la segmentazione semantica di immagini biomedicali. La U-Net è una rete encoder-decoder completamente convoluzionale caratterizzata da connessioni skip che collegano ogni livello dell'encoder al corrispondente livello del decoder: queste connessioni trasmettono direttamente le feature maps ad alta risoluzione dell'encoder al decoder, permettendo a quest'ultimo di recuperare i dettagli spaziali fini che si perderebbero durante la progressiva riduzione di risoluzione.
+
+L'implementazione utilizza la libreria \texttt{segmentation-models-pytorch}~\cite{Iakubovskii2019} tramite la classe \texttt{smp.Unet}, configurata con i seguenti parametri:
+
+\begin{itemize}
+    \item \textbf{Encoder:} \texttt{mit-b4} (Mix Transformer, variante B4), con pesi pre-addestrati su ImageNet. Il backbone può essere sostituito tramite il parametro \texttt{--encoder}.
+    \item \textbf{Canali di ingresso:} 3 (immagine RGB).
+    \item \textbf{Classi di output:} 1 (segmentazione binaria: tracciato vs.\ sfondo).
+    \item \textbf{Tipo di attenzione nel decoder:} \texttt{scse} (Squeeze-and-Excitation concorrente).
+\end{itemize}
+
+L'encoder \texttt{mit-b4} appartiene alla famiglia \textit{Mix Transformer} (MiT)~\cite{xie2021segformer}, un'architettura ibrida CNN-Transformer progettata specificamente per la segmentazione. A differenza dei Vision Transformer puri, MiT utilizza un'attenzione ridotta in risoluzione gerarchica: la sequenza di patch su cui opera l'attenzione viene progressivamente decimata a ogni stadio, riducendo il costo computazionale pur mantenendo il campo ricettivo globale tipico dei Transformer. Rispetto ai backbone CNN tradizionali, \texttt{mit-b4} offre una migliore capacità di modellare dipendenze a lungo raggio — essenziale per seguire tracciati ECG che percorrono l'intera larghezza dell'immagine — senza sacrificare la precisione locale sulle strutture sottili.
+
+\subsection{Decoder con Attenzione scSE}
+
+Il decoder è augmentato con il meccanismo di attenzione \textbf{scSE} (\textit{Concurrent Spatial and Channel Squeeze \& Excitation})~\cite{roy2018concurrent}. Il blocco scSE combina due meccanismi di ricalibrazione applicati in parallelo:
+
+\begin{itemize}
+    \item \textbf{Channel Squeeze \& Excitation (cSE):} Esegue una pooling globale spaziale per ottenere un descrittore per canale, lo processa attraverso due layer fully-connected con attivazione ReLU e sigmoid, e moltiplica le feature maps originali per i pesi risultanti. Questo permette alla rete di enfatizzare i canali più informativi per la segmentazione dei tracciati e sopprimere quelli irrilevanti.
+    \item \textbf{Spatial Squeeze \& Excitation (sSE):} Applica una convoluzione $1\times1$ che collassa la dimensione dei canali a uno scalare per pixel, producendo una mappa di attenzione spaziale che viene moltiplicata per le feature maps originali. Questo permette alla rete di concentrare l'attenzione sulle regioni spaziali dove il segnale è presente.
+\end{itemize}
+
+I due output vengono sommati elemento per elemento, combinando la ricalibrazione per canale con quella spaziale. Il meccanismo scSE è particolarmente vantaggioso per la segmentazione di strutture sottili come i tracciati ECG: la componente spaziale può apprendere a sopprimere le regioni di griglia e sfondo, mentre quella per canale seleziona le feature più discriminative tra tracciato e artefatti.
+
+\subsection{Funzione di Perdita: Dice + BCE}
+
+La funzione di perdita è la somma di due contributi complementari:
+
+\[
+    \mathcal{L} = \mathcal{L}_{\text{Dice}} + \mathcal{L}_{\text{BCE}}
+\]
+
+La \textbf{Dice Loss}~\cite{milletari2016vnet} è definita come:
+
+\[
+    \mathcal{L}_{\text{Dice}} = 1 - \frac{2 \sum_i p_i g_i}{\sum_i p_i + \sum_i g_i}
+\]
+
+dove $p_i$ è la probabilità predetta per il pixel $i$ e $g_i$ è il valore della ground truth ($0$ o $1$). La Dice Loss è insensibile allo sbilanciamento tra classi — fondamentale in questo contesto, in cui i pixel di tracciato rappresentano tipicamente meno del 5\% dell'immagine — e ottimizza direttamente una metrica di overlap tra maschera predetta e ground truth.
+
+La \textbf{Binary Cross-Entropy with Logits Loss} ($\mathcal{L}_{\text{BCE}}$) opera direttamente sugli output raw (logits) del modello prima dell'attivazione sigmoid, offrendo maggiore stabilità numerica rispetto alla BCE standard. Il suo gradiente è distribuito uniformemente su tutti i pixel, inclusi quelli dello sfondo, bilanciando l'ottimizzazione globale con quella locale fornita dalla Dice Loss. La combinazione delle due perdite è una scelta consolidata nella letteratura di segmentazione biomedicale~\cite{jadon2020survey}.
+
+\section{Preparazione del Dataset}
+
+\subsection{Struttura delle Directory per Stage}
+
+Il modulo si aspetta che il dataset sia organizzato in tre sottodirectory corrispondenti ai tre stage di difficoltà crescente:
+
+\begin{figure}[H]
+\centering
+\begin{dirtree}{%
+.1 <dataset\_root>/.
+.2 stage1\_easy/.
+.3 record\_001.png.
+.3 record\_001\_clean.png.
+.3 record\_002.png.
+.3 record\_002\_clean.png.
+.3 \ldots.
+.2 stage2\_medium/.
+.3 \ldots.
+.2 stage3\_hard/.
+.3 \ldots.
+}
+\caption{Struttura attesa del dataset per il modulo \texttt{ecg-signal-extractor}.}
+\label{fig:extractor_dirtree}
+\end{dirtree}
+\end{figure}
+
+Ogni stage contiene immagini sintetiche e le corrispondenti maschere ground truth prodotte dal generatore con il flag \texttt{--generate\_clean}. La coppia è identificata dal suffisso \texttt{\_clean} anteposto all'estensione: ad esempio, \texttt{record\_001.png} ha come maschera \texttt{record\_001\_clean.png}. Le immagini senza maschera corrispondente vengono incluse nel dataset con una maschera vuota.
+
+La divisione in stage riflette la complessità crescente degli artefatti configurati durante la generazione: lo stage facile (\texttt{stage1\_easy}) contiene immagini con pochi artefatti o nessuno, lo stage medio (\texttt{stage2\_medium}) aggiunge augmentation fotometrica e geometrica, e lo stage difficile (\texttt{stage3\_hard}) include la combinazione completa di pieghe, testo manoscritto, rumore pesante e compressione JPEG.
+
+\subsection{Classe \texttt{ECGSegmentationDataset}}
+
+La classe \texttt{ECGSegmentationDataset} implementa l'interfaccia \texttt{torch.utils.data.Dataset} per il caricamento delle coppie immagine-maschera. Il costruttore riceve il percorso della directory di stage e un oggetto \texttt{transform}; durante l'inizializzazione, costruisce la lista dei file immagine escludendo automaticamente i file con suffisso \texttt{\_clean} (che sono maschere, non input).
+
+Il metodo \texttt{\_\_getitem\_\_} esegue le seguenti operazioni per ogni indice:
+
+\begin{enumerate}
+    \item Carica l'immagine in formato RGB tramite PIL.
+    \item Deriva il percorso della maschera sostituendo l'estensione con \texttt{\_clean.<ext>}.
+    \item Carica la maschera in scala di grigi; se non esiste, genera una maschera nulla.
+    \item Binarizza la maschera applicando una soglia a 128: i pixel con valore superiore vengono impostati a 1.0, gli altri a 0.0.
+    \item Applica le trasformazioni Albumentations sincronizzate su immagine e maschera.
+    \item Restituisce la coppia \texttt{(image\_tensor, mask\_tensor)}, dove \texttt{mask\_tensor} ha shape \texttt{(1, H, W)}.
+\end{enumerate}
+
+\subsection{Augmentation con Albumentations}
+
+Il preprocessing delle immagini utilizza la libreria \texttt{albumentations}~\cite{buslaev2020albumentations}, che garantisce la coerenza spaziale tra trasformazioni applicate all'immagine e alla maschera corrispondente. La pipeline di trasformazione, costruita dalla funzione \texttt{get\_transform()}, comprende:
+
+\begin{itemize}
+    \item \textbf{Resize opzionale} (\texttt{A.Resize}): ridimensiona immagine e maschera a una risoluzione quadrata configurabile tramite \texttt{--resize}. Disabilitato di default; utile per ridurre l'occupazione di VRAM a scapito della precisione sulla segmentazione di tracciati sottili.
+    \item \textbf{Normalizzazione} (\texttt{A.Normalize}): normalizza i canali RGB ai valori di media e deviazione standard di ImageNet ($\mu = [0.485, 0.456, 0.406]$, $\sigma = [0.229, 0.224, 0.225]$), compatibilmente con i pesi pre-addestrati dell'encoder.
+    \item \textbf{Conversione a tensore} (\texttt{ToTensorV2}): converte l'array NumPy in un tensore PyTorch con layout \texttt{(C, H, W)}.
+\end{itemize}
+
+\section{Curriculum Learning}
+
+\subsection{Motivazione}
+
+Il \textit{curriculum learning}~\cite{bengio2009curriculum} è una strategia di addestramento ispirata al processo pedagogico umano: il modello viene esposto prima agli esempi più semplici e progressivamente a quelli più complessi. Questa strategia è particolarmente efficace quando il dataset presenta una forte varianza di difficoltà, come nel caso delle immagini ECG sintetiche: un modello addestrato dall'inizio su immagini con tutti gli artefatti fatica a convergere, mentre uno che ha prima consolidato la struttura del segnale su immagini pulite generalizza meglio in seguito.
+
+\subsection{Le Tre Fasi di Addestramento}
+
+L'addestramento si articola in tre stage successivi, processati nell'ordine \texttt{stage1\_easy} $\to$ \texttt{stage2\_medium} $\to$ \texttt{stage3\_hard}. Il modello non viene mai reinizializzato tra uno stage e il successivo: i pesi appresi nello stage precedente vengono preservati e affinati sullo stage successivo, trasferendo la conoscenza accumulata verso condizioni di input più degradate.
+
+Al termine di ogni stage, i pesi del modello vengono salvati in un file separato:
+
+\begin{itemize}
+    \item \texttt{ecg\_attention\_unet\_stage1\_easy.pth}
+    \item \texttt{ecg\_attention\_unet\_stage2\_medium.pth}
+    \item \texttt{ecg\_attention\_unet\_stage3\_hard.pth}
+\end{itemize}
+
+Se la directory di uno stage non è presente sul disco, lo stage viene saltato automaticamente, consentendo di eseguire il training anche su dataset parziali.
+
+\subsection{Scheduling del Learning Rate}
+
+Il learning rate è gestito su due livelli gerarchici. A livello inter-stage, il valore base viene dimezzato ad ogni stage successivo per preservare la conoscenza acquisita e ridurre il rischio di dimenticare le feature apprese nelle fasi precedenti — un fenomeno noto come \textit{catastrophic forgetting}:
+
+\begin{table}[H]
+\centering
+\caption{Learning rate per stage (valore base di default: $10^{-4}$).}
+\label{tab:extractor_lr}
+\begin{tabular}{lll}
+\hline
+\textbf{Stage} & \textbf{Learning rate} & \textbf{Fattore} \\
+\hline
+\texttt{stage1\_easy}   & $1.0 \times 10^{-4}$ & $\times 1$ \\
+\texttt{stage2\_medium} & $5.0 \times 10^{-5}$ & $\times \frac{1}{2}$ \\
+\texttt{stage3\_hard}   & $2.5 \times 10^{-5}$ & $\times \frac{1}{4}$ \\
+\hline
+\end{tabular}
+\end{table}
+
+A livello intra-stage, viene utilizzato un \textbf{Cosine Annealing Scheduler} (\texttt{CosineAnnealingLR}) con $T_{\max}$ pari al numero di epoche configurato. Lo scheduler riduce il learning rate seguendo una traiettoria coseno dal valore iniziale dello stage verso zero nell'ultima epoca, evitando oscillazioni nelle fasi finali dell'ottimizzazione e favorendo la convergenza verso minimi piatti del loss landscape — associati a una migliore generalizzazione.
+
+\section{Pipeline di Training}
+
+\subsection{Ciclo di Addestramento}
+
+Per ogni stage, il dataset viene suddiviso in training set e validation set tramite \texttt{random\_split}, con la frazione di validazione controllata dal parametro \texttt{--val\_split} (default: 20\%). La funzione \texttt{train\_epoch()} esegue un'epoca completa di addestramento:
+
+\begin{enumerate}
+    \item Il modello viene messo in modalità \texttt{train()}.
+    \item Per ogni batch: si azzera il gradiente (\texttt{zero\_grad()}), si esegue il forward pass in contesto di mixed precision, si calcola la perdita, si esegue il backward pass scalato e si aggiorna l'ottimizzatore tramite lo scaler.
+    \item Viene restituita la perdita media sull'intero epoch.
+\end{enumerate}
+
+\subsection{Validazione e Monitoraggio Automatico}
+
+La funzione \texttt{val\_epoch()} valuta il modello sul validation set in modalità \texttt{eval()} con il contesto \texttt{torch.no\_grad()}, evitando l'accumulo dei gradienti. Ad ogni epoca viene stampata una riga di riepilogo:
+
+\begin{minted}{text}
+  Epoch [7/15] - Train Loss: 0.1823 | Val Loss: 0.2041 | LR: 6.50e-05
+\end{minted}
+
+Al termine di ogni stage, la funzione \texttt{suggest\_adjustments()} analizza l'andamento delle curve di perdita e stampa una diagnosi automatica con suggerimenti per lo stage successivo. La funzione valuta quattro condizioni sulle ultime tre epoche di ogni stage:
+
+\begin{table}[H]
+\centering
+\caption{Condizioni diagnostiche e suggerimenti della funzione \texttt{suggest\_adjustments()}.}
+\label{tab:extractor_diag}
+\begin{tabular}{llp{6cm}}
+\hline
+\textbf{Tag} & \textbf{Condizione} & \textbf{Suggerimento} \\
+\hline
+\texttt{[!] Overfitting}  & $\bar{\mathcal{L}}_{\text{val}} - \bar{\mathcal{L}}_{\text{train}} > 0.1$ & Ridurre il moltiplicatore di LR o aumentare \texttt{--val\_split} \\
+\texttt{[!] Divergenza}   & $\mathcal{L}_{\text{val}}^{\text{last}} - \mathcal{L}_{\text{val}}^{\text{first}} > 0.02$ & Ridurre il learning rate base \\
+\texttt{[!] Plateau}      & $|\mathcal{L}_{\text{val}}^{\text{last}} - \mathcal{L}_{\text{val}}^{-3}| < 0.001$ con $\bar{\mathcal{L}}_{\text{val}} > 0.1$ & Aumentare \texttt{--epochs} o il learning rate \\
+\texttt{[i] Underfitting} & $\bar{\mathcal{L}}_{\text{val}} - \bar{\mathcal{L}}_{\text{train}} < 0.02$ con $\bar{\mathcal{L}}_{\text{val}} > 0.2$ & Più epoche o encoder più grande \\
+\texttt{[OK]}             & $\bar{\mathcal{L}}_{\text{val}} < 0.05$ & Nessuna azione necessaria \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Precisione Mista e Supporto Hardware}
+
+L'addestramento utilizza la \textbf{precisione mista automatica} (\textit{Automatic Mixed Precision}, AMP) tramite \texttt{torch.amp.GradScaler} e \texttt{torch.amp.autocast}. In modalità AMP, i forward pass e il calcolo della perdita vengono eseguiti in \texttt{float16} — riducendo l'occupazione di VRAM e sfruttando le Tensor Core delle GPU moderne — mentre i parametri del modello e l'aggiornamento del gradiente avvengono in \texttt{float32} per preservare la stabilità numerica.
+
+Lo scaler gestisce il rischio di underflow dei gradienti in \texttt{float16}: moltiplica la perdita per un fattore di scala prima del backward pass e divide i gradienti prima dell'aggiornamento, aggiustando dinamicamente il fattore di scala in base alla presenza di valori non finiti.
+
+La mixed precision è abilitata automaticamente su CUDA (GPU NVIDIA e AMD/ROCm) e disabilitata su CPU e Apple Silicon (MPS), dove le istruzioni \texttt{float16} non offrono vantaggi o non sono supportate. Il rilevamento del dispositivo avviene in ordine di priorità: CUDA $\to$ MPS $\to$ CPU.
+
+\section{Parametri di Configurazione}
+
+Il modulo espone i seguenti parametri da riga di comando:
+
+\begin{itemize}
+    \item \textbf{\texttt{--path}} (obbligatorio): percorso alla directory radice del dataset, contenente le sottodirectory di stage.
+    \item \textbf{\texttt{--epochs}}: numero di epoche per stage; default: \texttt{15}.
+    \item \textbf{\texttt{--batch}}: batch size; default: \texttt{8}.
+    \item \textbf{\texttt{--val\_split}}: frazione del dataset riservata alla validazione per stage; default: \texttt{0.2}.
+    \item \textbf{\texttt{--encoder}}: backbone dell'encoder; default: \texttt{mit-b4}. Opzioni comuni:
+        \begin{itemize}
+            \item \texttt{mit-b4} — transformer, massima precisione, maggiore consumo di VRAM
+            \item \texttt{mit-b2} — transformer, più leggero di \texttt{mit-b4}
+            \item \texttt{efficientnet-b5} — CNN, buon equilibrio tra precisione e memoria
+            \item \texttt{resnet50} — CNN, baseline generale affidabile
+        \end{itemize}
+    \item \textbf{\texttt{--lr}}: learning rate base per lo stage 1; default: \texttt{1e-4}. Viene dimezzato automaticamente per gli stage successivi.
+    \item \textbf{\texttt{--workers}}: numero di processi paralleli del DataLoader; default: \texttt{4}.
+    \item \textbf{\texttt{--resize}}: risoluzione quadrata a cui ridimensionare le immagini prima del training; default: disabilitato (risoluzione originale). Riduce il consumo di VRAM a scapito della precisione sulla segmentazione dei tracciati sottili.
+\end{itemize}
+
+\section{Considerazioni sull'Occupazione di VRAM}
+
+Le immagini prodotte dal generatore hanno risoluzione nativa $1024 \times 1024$ pixel. Con l'encoder \texttt{mit-b4} e la mixed precision abilitata, il consumo di VRAM stimato è il seguente:
+
+\begin{table}[H]
+\centering
+\caption{Stima del consumo di VRAM con encoder \texttt{mit-b4} e mixed precision.}
+\label{tab:extractor_vram}
+\begin{tabular}{rrr}
+\hline
+\textbf{Risoluzione} & \textbf{Batch size} & \textbf{VRAM stimata} \\
+\hline
+$512 \times 512$   & 8 & $\sim 8$--$10$ GB \\
+$1024 \times 1024$ & 2 & $\sim 10$--$12$ GB \\
+$1024 \times 1024$ & 4 & $\sim 16$--$20$ GB \\
+$1024 \times 1024$ & 8 & $\sim 28$--$32$ GB \\
+\hline
+\end{tabular}
+\end{table}
+
+Per configurazioni con VRAM limitata si raccomanda di attivare \texttt{--resize 512} con un encoder più leggero (\texttt{efficientnet-b5} o \texttt{mit-b2}). La riduzione di risoluzione comporta una minore precisione sulla localizzazione dei tracciati più sottili, ma rimane accettabile per pipeline di pre-segmentazione.
