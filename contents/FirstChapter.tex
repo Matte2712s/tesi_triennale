@@ -5,11 +5,11 @@ L'intelligenza artificiale ha aperto nuove frontiere nella gestione dei segnali 
 \section{Inquadramento del problema}
 La digitalizzazione automatica degli ECG richiede un processo di ricostruzione del segnale capace di isolare l'attività elettrica del cuore da elementi di disturbo quali griglie millimetrate, pieghe della carta e macchie di inchiostro. La capacità di generalizzazione dei modelli di Deep Learning dipende interamente dalla varietà dei dati su cui vengono allenati; senza un dataset che includa campioni \textbf{difficili} e deteriorati, le performance su documenti clinici reali rimangono limitate.
 
-\section{Obiettivo del lavoro: Pipeline di Rendering e Augmentation}
-Il presente lavoro si focalizza sulla progettazione di un sistema per la \textbf{generazione di immagini sintetiche e l'applicazione di artefatti realistici}. Partendo da un dataset di segnali ECG digitali preesistente, il framework trasforma tali dati numerici in rappresentazioni visuali, sottoponendole a una pipeline di degradazione controllata. 
+\section{Obiettivo del lavoro: Generazione Sintetica e Segmentazione}
+Il presente lavoro propone una pipeline a due stadi per la digitalizzazione di immagini ECG. Il primo stadio si focalizza sulla \textbf{generazione sintetica} di immagini ECG realistiche: partendo da un dataset di segnali digitali preesistente, il framework trasforma i dati numerici in rappresentazioni visuali sottoponendole a una pipeline di degradazione controllata, producendo coppie immagine degradata / ground truth binaria. Il secondo stadio sfrutta queste coppie per addestrare un modello di \textbf{segmentazione semantica} capace di isolare i tracciati del segnale da griglia, artefatti e sfondo nelle immagini reali.
 
 \subsection{Integrazione di Artefatti per la Robustezza}
-Il contributo principale risiede nella creazione di un sistema di \textit{data augmentation} avanzato. Come dimostrato da Li et al.~\cite{li2020deep}, l'esposizione del modello a disturbi strutturali durante il training è fondamentale per superare il \textit{domain gap} tra i dati sintetici e le scansioni reali, permettendo di incrementarne la robustezza.
+Un contributo centrale risiede nella creazione di un sistema di \textit{data augmentation} avanzato che alimenta direttamente il training del segmentatore. Come dimostrato da Li et al.~\cite{li2020deep}, l'esposizione del modello a disturbi strutturali durante il training è fondamentale per superare il \textit{domain gap} tra i dati sintetici e le scansioni reali, permettendo di incrementarne la robustezza.
 
 \section{Struttura della tesi}
 L'elaborato descrive lo sviluppo e la logica del sistema di trasformazione:

@@ -1,5 +1,5 @@
 \begin{abstract}
-\textbf{Titolo:} Generazione Sintetica di Immagini ECG per l'Addestramento di Modelli di Digitalizzazione: Pipeline di Rendering e Simulazione di Artefatti.
+\textbf{Titolo:} Generazione Sintetica e Segmentazione di Immagini ECG: Pipeline per la Digitalizzazione del Tracciato.
 
 \vspace{0.5cm}
 
@@ -7,18 +7,19 @@
 
 \vspace{0.2cm}
 
-\noindent \textbf{Obiettivo:} Il presente lavoro propone lo sviluppo di un sistema di generazione sintetica di immagini ECG, finalizzato alla creazione di dataset massivi per l'addestramento di modelli di digitalizzazione. L'obiettivo primario è colmare il divario tra i dati sintetici ideali e la complessità dei tracciati fisici reperibili negli archivi clinici.
+\noindent \textbf{Obiettivo:} Il presente lavoro propone una pipeline a due stadi per la digitalizzazione di immagini ECG: un sistema di generazione sintetica per la creazione di dataset massivi annotati, e un modello di segmentazione semantica per l'estrazione automatica dei tracciati dalle immagini. L'obiettivo è colmare il divario tra i dati sintetici ideali e la complessità dei tracciati fisici reperibili negli archivi clinici, fornendo al contempo uno strumento in grado di operare su immagini degradate reali.
 
 \vspace{0.2cm}
 
-\noindent \textbf{Metodologia:} Il framework integra tecniche di modellazione del segnale cardiaco con algoritmi di rendering grafico avanzato, producendo in modo procedurale coppie di dati composte da un tracciato "pulito" (ground truth) e la corrispondente istanza degradata. La pipeline modulare include:
+\noindent \textbf{Metodologia:} Il framework integra tecniche di modellazione del segnale cardiaco con algoritmi di rendering grafico avanzato e deep learning per la segmentazione. La pipeline modulare include:
 \begin{enumerate}
     \item \textbf{Generazione di layout ed intestazioni:} sintesi procedurale di dati anagrafici, formati di reportistica multimodale e griglie millimetrate.
     \item \textbf{Simulazione di artefatti geometrici:} riproduzione di pieghe, rotazioni, deformazioni prospettiche e variazioni di orientamento del foglio.
     \item \textbf{Degradazione dell'immagine:} simulazione di artefatti tipici dei processi di scansione, quali variazioni di contrasto, compressione dell'immagine, ombre e rumore del sensore.
+    \item \textbf{Segmentazione semantica con curriculum learning:} addestramento di una U-Net con decoder scSE su tre stage di difficoltà crescente, con augmentation al volo, unfreezing progressivo dell'encoder e una funzione di perdita composita (Focal + Dice + clDice) con pesi variabili per stage.
 \end{enumerate}
 
 \vspace{0.2cm}
 
-\noindent \textbf{Risultati e Conclusioni:} L'approccio permette di generare una vasta varietà di campioni con una \textit{ground truth} intrinseca. L'integrazione di artefatti realistici nel processo di generazione sintetica, come suggerito da Li et al. \cite{li2020deep} per la robustezza dei modelli in presenza di disturbi strutturali e casuali, risulta fondamentale per superare le criticità legate alla variabilità dei documenti clinici reali. Il sistema si configura come uno strumento essenziale per la valorizzazione del patrimonio informativo contenuto negli archivi cardiologici, ponendo le basi per una completa automazione e digitalizzazione del recupero dati clinici.
+\noindent \textbf{Risultati e Conclusioni:} L'approccio permette di generare una vasta varietà di campioni con una \textit{ground truth} intrinseca, utilizzabili direttamente per addestrare il modello di segmentazione senza annotazione manuale. L'integrazione di artefatti realistici nel processo di generazione sintetica, come suggerito da Li et al. \cite{li2020deep} per la robustezza dei modelli in presenza di disturbi strutturali e casuali, risulta fondamentale per la generalizzazione del segmentatore a documenti clinici reali. Il sistema si configura come uno strumento completo per la valorizzazione del patrimonio informativo contenuto negli archivi cardiologici, ponendo le basi per una completa automazione del recupero dati clinici.
 \end{abstract}
