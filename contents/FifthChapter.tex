@@ -95,7 +95,7 @@ Poiché la scheletrizzazione morfologica classica non è differenziabile e non p
     \mathcal{S}^{(t)}(M) = \mathcal{S}^{(t-1)}(M) + \mathrm{ReLU}\!\left(\delta^{(t)} - \mathcal{S}^{(t-1)}(M)\cdot\delta^{(t)}\right)
 \]
 
-dove $\widetilde{\mathcal{O}} = \widetilde{\mathcal{D}} \circ \widetilde{\mathcal{E}}$ è l'apertura morbida e $\delta^{(t)}$ è il contributo dell'iterazione $t$. L'implementazione utilizza 10 iterazioni. La loss è definita come:
+dove $\widetilde{\mathcal{O}} = \widetilde{\mathcal{D}} \circ \widetilde{\mathcal{E}}$ è l'apertura morbida e $\delta^{(t)}$ è il contributo dell'iterazione $t$. L'implementazione utilizza 15 iterazioni: un numero maggiore permette allo scheletro di propagarsi lungo porzioni più estese del tracciato, rendendo la perdita sensibile anche alle interruzioni lontane dagli estremi della linea. La loss è definita come:
 
 \[
     \mathcal{L}_{\text{clDice}} = 1 - \frac{2 \cdot T_{\text{prec}} \cdot T_{\text{sens}}}{T_{\text{prec}} + T_{\text{sens}}}
@@ -187,15 +187,16 @@ L'addestramento si articola in tre stage successivi di difficoltà crescente, pr
 
 \begin{table}[H]
 \centering
-\caption{Caratteristiche dei tre stage di curriculum learning.}
+\caption{Caratteristiche dei quattro stage di addestramento.}
 \label{tab:extractor_stages}
-\begin{tabular}{llll}
+\begin{tabular}{lllll}
 \hline
-\textbf{Stage} & \textbf{Epoche} & \textbf{LR default} & \textbf{Augmentation} \\
+\textbf{Stage} & \textbf{Epoche} & \textbf{LR default} & \textbf{Augmentation} & \textbf{Condizione} \\
 \hline
-\texttt{stage0\_easy}   & 5 (fisso)            & \texttt{--lr} ($10^{-4}$)        & Nessuna - immagini pulite \\
-\texttt{stage1\_medium} & \texttt{--epochs} (default 20)  & \texttt{--lr\_medium} ($10^{-5}$) & Completa \\
-\texttt{stage2\_hard}   & \texttt{--epochs} // 2          & \texttt{--lr\_hard} ($10^{-6}$)  & Completa \\
+\texttt{stage0\_easy}    & 20 (fisso)                      & \texttt{--lr} ($10^{-4}$)               & Nessuna      & sempre \\
+\texttt{stage1\_medium}  & \texttt{--epochs} (default 100) & \texttt{--lr\_medium} ($10^{-5}$)       & Completa     & sempre \\
+\texttt{stage2\_hard}    & \texttt{--epochs} // 2          & \texttt{--lr\_hard} ($10^{-6}$)         & Completa     & sempre \\
+\texttt{det\_finetune}   & \texttt{--det\_finetune\_epochs} (default 30) & \texttt{--det\_finetune\_lr} ($10^{-3}$) & Completa & solo \texttt{--detection} \\
 \hline
 \end{tabular}
 \end{table}
@@ -270,6 +271,40 @@ La funzione \texttt{val\_epoch()} valuta il modello sul validation set in modali
 \end{minted}
 
 Ogni 50 batch viene stampato anche il loss del singolo batch, per monitorare l'andamento intra-epoca. Al termine di ogni stage, la funzione \texttt{suggest\_adjustments()} stampa un riepilogo con la best val loss, il miglioramento totale e un avviso di divergenza se la val loss è aumentata di più di 0.05 rispetto all'inizio dello stage, suggerendo di ridurre il learning rate del corrispondente parametro.
+
+\subsection{Curve di Loss e Learning Rate}
+
+Al termine di ogni stage, il modulo genera automaticamente un pannello di diagnostica salvato in \texttt{loss\_plots/loss\_<stage>.png}. Ogni pannello è composto da tre grafici affiancati:
+
+\begin{itemize}
+    \item \textbf{Loss totale:} andamento della train loss e della val loss per epoca, con una linea verticale tratteggiata in corrispondenza dell'epoca con la minima val loss (best checkpoint).
+    \item \textbf{Componenti della loss:} le tre componenti Focal, Dice e clDice tracciate separatamente per train (tratteggiato) e val (continuo), permettendo di identificare quale termine guida la discesa e se uno dei tre è in sovra-adattamento.
+    \item \textbf{Learning rate:} la traiettoria del cosine annealing scheduler per lo stage, che riduce il LR dal valore iniziale verso zero nell'ultima epoca.
+\end{itemize}
+
+%\begin{figure}[H]
+%    \centering
+%    \includegraphics[width=\textwidth]{images/loss_stage0_easy.png}
+%    \caption{Pannello di diagnostica dello \texttt{stage0\_easy}: loss totale, componenti e learning rate.}
+%    \label{fig:loss_stage0}
+%\end{figure}
+
+%\begin{figure}[H]
+%    \centering
+%    \includegraphics[width=\textwidth]{images/loss_stage1_medium.png}
+%    \caption{Pannello di diagnostica dello \texttt{stage1\_medium}: loss totale, componenti e learning rate.}
+%    \label{fig:loss_stage1}
+%\end{figure}
+
+%\begin{figure}[H]
+%    \centering
+%    \includegraphics[width=\textwidth]{images/loss_stage2_hard.png}
+%    \caption{Pannello di diagnostica dello \texttt{stage2\_hard}: loss totale, componenti e learning rate. La linea tratteggiata indica il best checkpoint all'epoca 34.}
+%    \label{fig:loss_stage2}
+%\end{figure}
+
+% TODO: uncomment figures and re-enable this paragraph once loss plots are available
+%Dalla Figura~\ref{fig:loss_stage2} emergono alcuni aspetti caratteristici dell'addestramento allo stage più difficile. La val loss converge significativamente più in basso della train loss: questo comportamento, apparentemente controintuitivo, è atteso in presenza di dropout e augmentation aggressiva applicata solo al training set — il modello vede immagini degradate durante l'addestramento ma viene valutato su immagini pulite. Il gap si riduce progressivamente man mano che il cosine annealing abbassa il learning rate, stabilizzando l'ottimizzazione. La componente Dice domina quantitativamente le altre per via della sua scala naturale nell'intervallo $[0, 1]$; le componenti Focal e clDice, pur di valore assoluto inferiore, esercitano un contributo proporzionalmente importante al gradiente complessivo grazie ai loro pesi nel calcolo della loss composita.
 
 \subsection{Valutazione Finale sul Test Set}
 
@@ -361,6 +396,104 @@ La maschera binaria prodotta dal modello può contenere falsi positivi corrispon
 \paragraph{Stadio 1 — Rilevamento guidato dall'immagine.} Viene applicato un blur gaussiano con sigma elevato (default: 25 px) all'immagine originale in scala di grigi. Le linee sottili del tracciato ECG (larghezza tipica 2–8 px) svaniscono nel processo di sfocatura, mentre le macchie d'inchiostro di grandi dimensioni rimangono scure. Le regioni in cui il valore dell'immagine sfocata è inferiore a una soglia (default: 150 su scala 0–255) vengono identificate come macchie e rimosse dalla maschera binaria.
 
 \paragraph{Stadio 2 — Pulizia tramite distance transform.} Per catturare eventuali regioni spesse non rilevate dallo stadio 1, viene calcolata la \textit{distance transform} della maschera pulita: ad ogni pixel viene assegnata la distanza in pixel dal bordo più vicino della regione predetta. Le regioni con distanza superiore a una soglia (default: 15 px) vengono considerate troppo spesse per essere tracciati ECG — la cui semi-larghezza tipica è di 2–8 px — e le loro aree centrali vengono espanse tramite dilatazione morfologica e rimosse dalla maschera. Infine, le componenti connesse con area inferiore a 20 pixel vengono eliminate come rumore residuo.
+
+\section{Detection Head Multi-task per la Localizzazione dei Lead}
+\label{sec:detection_head}
+
+Il flag \texttt{--detection} estende il modello base con una \textbf{testa di detection multi-task} che, in aggiunta alla segmentazione, predice per ciascuno dei 12 lead ECG standard: (1) se il lead è presente nell'immagine, (2) la regione del tracciato e (3) la regione dell'etichetta testuale, entrambe come bounding box orientati.
+
+\subsection{Architettura della Detection Head}
+
+Quando \texttt{--detection} è attivo, la classe \texttt{smp.Unet} viene sostituita da \texttt{ECGMultiTaskModel}, che condivide l'encoder e il decoder con il task di segmentazione e aggiunge una \texttt{DetectionHead} collegata al collo di bottiglia dell'encoder.
+
+La scelta cruciale riguarda \textit{come} condensare le feature maps spaziali del bottleneck — di forma \texttt{(B, C, H, W)} — in un vettore da passare all'MLP. Un \textit{global average pooling} collasserebbe tutte le dimensioni spaziali in un unico valore per canale, distruggendo le informazioni su \textit{dove} si trovano i lead nell'immagine e costringendo il modello a predire bounding box allineati agli assi. Per preservare la struttura spaziale, la testa utilizza invece un \textbf{pooling separato per strisce orizzontali e verticali}:
+
+\begin{enumerate}
+    \item Una convoluzione $1\times1$ riduce i canali da $C$ a 256, seguita da batch normalization e ReLU.
+    \item Un \textit{row-strip pooling} divide l'asse verticale in 8 fasce e ne calcola la media lungo l'asse orizzontale, producendo un vettore di dimensione $256 \times 8$.
+    \item Un \textit{col-strip pooling} divide l'asse orizzontale in 8 fasce e ne calcola la media lungo l'asse verticale, producendo un vettore di dimensione $256 \times 8$.
+    \item I due vettori vengono concatenati (dimensione totale 4096) e passati a un MLP con uno strato nascosto da 512 neuroni, ReLU e dropout (0.3).
+    \item Il layer finale produce $12 \times 13$ logit: 1 (presenza) $+ 6$ (bounding box lead) $+ 6$ (bounding box etichetta) per ognuno dei 12 lead.
+\end{enumerate}
+
+\subsection{Rappresentazione OBB (Oriented Bounding Box)}
+
+Un \textbf{bounding box allineato agli assi} (AABB, \textit{Axis-Aligned Bounding Box}) è il rettangolo minimo che contiene un oggetto i cui lati sono paralleli agli assi dell'immagine: è descritto da soli 4 parametri (coordinate del centro, larghezza, altezza) ma non può rappresentare oggetti inclinati senza includervi ampio sfondo vuoto. Per oggetti orientati — come le regioni dei lead ECG, che possono essere inclinati quando l'immagine è stata ruotata in augmentation — questa approssimazione introduce un errore di localizzazione sistematico.
+
+Un \textbf{oriented bounding box} (OBB) risolve il problema aggiungendo un grado di libertà: l'angolo di rotazione $\theta$ del rettangolo rispetto all'orizzontale. Un OBB è quindi il rettangolo minimo che contiene l'oggetto senza il vincolo di allineamento agli assi, e può rappresentare fedelmente regioni inclinate di qualsiasi angolo.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{images/obb_vs_aabb.png}
+    \caption{Confronto tra AABB (tratteggiato) e OBB (continuo) su una regione di lead ECG inclinata. L'AABB include una larga porzione di sfondo, mentre l'OBB aderisce alla forma reale del tracciato.}
+    \label{fig:obb_vs_aabb}
+\end{figure}
+
+In questa implementazione i bounding box vengono rappresentati come OBB con \textbf{6 parametri} anziché le 8 coordinate libere dei quattro angoli:
+
+\[
+    \text{OBB} = \bigl[c_x,\; c_y,\; w,\; h,\; \sin(2\theta),\; \cos(2\theta)\bigr]
+\]
+
+dove $(c_x, c_y)$ è il centro normalizzato, $w$ e $h$ sono larghezza e altezza normalizzate (con $w \geq h$ per convenzione, rendendo $\theta$ l'angolo dell'asse più lungo), e $\theta$ è l'angolo di rotazione rispetto all'orizzontale.
+
+La scelta di 6 parametri rispetto agli 8 delle coordinate libere non è solo una questione di compattezza: supervisionare 8 coordinate indipendenti non impone al modello alcun vincolo geometrico, per cui può predire quadrilateri degeneri che non sono rettangoli. La parametrizzazione OBB garantisce per costruzione che l'output sia sempre un rettangolo valido.
+
+\paragraph{Codifica a doppio angolo.} La scelta di codificare l'angolo come $\sin(2\theta)/\cos(2\theta)$ anziché come $\theta$ direttamente — o come $\sin(\theta)/\cos(\theta)$ — è motivata dalla simmetria dei rettangoli: un rettangolo ruotato di $180°$ è geometricamente identico all'originale. Se si utilizzasse la codifica diretta $\sin(\theta)/\cos(\theta)$, per uno stesso rettangolo esisterebbero due valori target ugualmente validi ($\theta$ e $\theta + 180°$), e la rete riceverebbe un segnale di addestramento ambiguo — in certi batch verrebbe spinta verso $\theta$, in altri verso $\theta + 180°$, ostacolando la convergenza. Usando $2\theta$, i due angoli equivalenti vengono mappati allo stesso punto nel piano $(\sin, \cos)$, eliminando l'ambiguità e rendendo il target univoco.
+
+I parametri geometrici $(c_x, c_y, w, h)$ vengono predetti applicando una sigmoid ai logit corrispondenti, ottenendo valori in $(0,1)$ coerenti con le coordinate normalizzate; i parametri angolari $(\sin(2\theta), \cos(2\theta))$ vengono predetti applicando una tanh, ottenendo valori in $(-1,1)$ coerenti con il codominio delle funzioni trigonometriche. La conversione ai quattro angoli del rettangolo avviene tramite la funzione \texttt{obb\_to\_corners()} a tempo di inferenza.
+
+\subsection{Funzione di Perdita per il Rilevamento}
+
+La perdita totale è la somma della perdita di segmentazione e della perdita di detection:
+
+\[
+    \mathcal{L}_{\text{tot}} = \mathcal{L}_{\text{seg}} + \mathcal{L}_{\text{det}}
+\]
+
+La perdita di detection è a sua volta composta da tre termini:
+
+\[
+    \mathcal{L}_{\text{det}} = w_p\,\mathcal{L}_{\text{BCE}}(\text{presenza}) + w_b\,\mathcal{L}_{\text{SL1}}(c_x,c_y,w,h) + w_a\,\mathcal{L}_{\text{MSE}}(\sin 2\theta, \cos 2\theta)
+\]
+
+Tutti i termini geometrici e angolari sono calcolati solo sui lead effettivamente presenti nell'immagine (masking tramite il vettore di presenza ground truth). La Smooth-L1 viene usata per le coordinate geometriche per la sua robustezza agli outlier; la MSE è preferibile per i componenti angolari perché il codominio è limitato e si vuole una penalizzazione simmetrica intorno all'errore zero.
+
+Le immagini prive di file JSON di annotazione contribuiscono solo alla perdita di segmentazione: la perdita di detection viene saltata per quei campioni del batch.
+
+\subsection{Conversione Ground Truth e Inferenza}
+
+A tempo di caricamento, i bounding box corner forniti dal generatore (formato $[[x_1,y_1],[x_2,y_2],[x_3,y_3],[x_4,y_4]]$) vengono convertiti in OBB tramite la funzione \texttt{corners\_to\_obb()}: si calcolano centro, vettori degli spigoli e angolo dell'asse più lungo, normalizzando le coordinate per larghezza e altezza dell'immagine.
+
+Quando l'augmentation include rotazione (\texttt{--rotate}), le coordinate dei corner vengono ruotate dall'augmentatore \texttt{get\_augment()} prima della conversione in OBB, garantendo la coerenza tra immagine augmentata e annotazioni.
+
+A tempo di inferenza, \texttt{test\_and\_visualize\_masks.py} converte le OBB predette in coordinate pixel tramite \texttt{obb\_to\_corners()} e le disegna come poligoni quadrilateri sull'immagine originale, supportando la visualizzazione di bounding box ruotati.
+
+\subsection{Stage di Fine-tuning della Detection Head}
+\label{sec:det_finetune}
+
+L'addestramento congiunto di segmentazione e detection presenta un problema strutturale: la perdita di segmentazione domina numericamente quella di detection, assorbendo la quasi totalità del segnale di gradiente. La \texttt{DetectionHead}, inizializzata casualmente, riceve un aggiornamento troppo debole per convergere efficacemente durante i tre stage del curriculum.
+
+Per risolvere questo problema, al termine dello \texttt{stage2\_hard} viene eseguito automaticamente un quarto stage dedicato esclusivamente alla detection, attivato dalla presenza del flag \texttt{--detection}. Durante questo stage:
+
+\begin{itemize}
+    \item L'intera U-Net — encoder, decoder e testa di segmentazione — viene \textbf{congelata}: i suoi pesi non ricevono aggiornamenti.
+    \item Solo i parametri della \texttt{DetectionHead} rimangono addestrabili.
+    \item Il learning rate viene reimpostato al valore \texttt{--det\_finetune\_lr} (default $10^{-3}$), significativamente più alto del $10^{-6}$ usato nello \texttt{stage2\_hard}, poiché la testa deve apprendere da zero anziché effettuare un fine-tuning di precisione.
+    \item L'ottimizzatore e il cosine annealing scheduler vengono reinizializzati per questo stage.
+\end{itemize}
+
+Il risultato è che il $100\%$ della capacità computazionale del gradiente viene dedicata alla regressione dei bounding box, senza competizione con il task di segmentazione. I pesi migliori vengono salvati in \texttt{ecg\_attention\_unet\_det\_finetune.pth}.
+
+È possibile eseguire solo questo stage su un checkpoint di segmentazione già addestrato, saltando i tre stage del curriculum tramite \texttt{--resume\_stage 3}:
+
+\begin{minted}{bash}
+python extractor.py \
+  --base_dir /data/ecg_clean \
+  --load_weights ecg_attention_unet_stage2_hard.pth \
+  --resume_stage 3 \
+  --detection --det_finetune_epochs 30 --det_finetune_lr 1e-3
+\end{minted}
 
 \section{Utilità per la Preparazione del Dataset}
 
