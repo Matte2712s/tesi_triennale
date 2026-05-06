@@ -479,6 +479,20 @@ Quando il flag \texttt{--detection} è attivo, viene aggiunta una quarta colonna
 
 Confrontare i pannelli prodotti allo stage 0 e allo stage 2 permette di osservare visivamente il miglioramento portato dal curriculum learning: le maschere dello stage 0 tendono a includere porzioni di griglia come falsi positivi, mentre quelle dello stage 2 risultano più pulite grazie all'esposizione progressiva agli artefatti.
 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{images/viz_seg_stage0.png}
+    \caption{\texttt{stage0\_easy}: heatmap rumorosa, maschere incomplete.}
+    \label{fig:seg_a}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{images/viz_seg_stage2.png}
+    \caption{\texttt{stage2\_hard}: heatmap pulita, maschere più complete.}
+    \label{fig:seg_b}
+\end{figure}
+
 \section{Detection Head Multi-task per la Localizzazione dei Lead}
 \label{sec:detection_head}
 
@@ -573,3 +587,20 @@ A tempo di caricamento, i bounding box corner forniti dal generatore (formato $[
 Quando l'augmentation include rotazione (\texttt{--rotate}), le coordinate dei corner vengono ruotate dall'augmentatore \texttt{get\_augment()} prima della conversione in OBB, garantendo la coerenza tra immagine augmentata e annotazioni.
 
 A tempo di inferenza, \texttt{test\_and\_visualize\_masks.py} converte le OBB predette in coordinate pixel tramite \texttt{obb\_to\_corners()} e le disegna come poligoni quadrilateri sull'immagine originale, supportando la visualizzazione di bounding box ruotati.
+
+ \begin{figure}[!ht]
+    \centering
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/viz_det_before.png}
+        \caption*{Prima del \texttt{det\_finetune}.}
+    \end{minipage}
+    \hfill
+    \begin{minipage}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/viz_det_after.png}
+        \caption*{Dopo il \texttt{det\_finetune}.}
+    \end{minipage}
+    \caption{Effetto del \texttt{det\_finetune} sulla localizzazione dei lead. Prima del fine-tuning (sinistra) la \texttt{DetectionHead}, non ancora addestrata, produce bounding box non significativi; dopo il fine-tuning (destra) i box verdi (\textit{lime}) individuano in modo migliore le regioni dei tracciati e quelli gialli tratteggiati le etichette testuali.}
+    \label{fig:viz_det_comparison}
+\end{figure} 
