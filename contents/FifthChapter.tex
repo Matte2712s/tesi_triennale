@@ -246,7 +246,7 @@ L'addestramento si articola in quattro stage successivi. I primi tre costituisco
 \addlinespace[0.5em]
 \texttt{stage2\_hard}   & \texttt{--epochs} // 2 & \texttt{--lr\_hard} ($10^{-6}$) & Completa & sempre \\
 \addlinespace[0.5em]
-\texttt{det\_finetune}  & \texttt{--det\_finetune\_epochs} (30) & \texttt{--det\_finetune\_lr} ($10^{-3}$) & Completa & solo \texttt{--det} \\
+\texttt{det\_finetune}  & \texttt{--det\_finetune\_epochs} (30) & \texttt{--det\_finetune\_lr} ($10^{-5}$) & Completa & solo \texttt{--det} \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -308,7 +308,7 @@ Per risolvere questo problema, al termine dello \texttt{stage2\_hard} viene eseg
 \begin{itemize}
     \item L'intera U-Net, encoder, decoder e head di segmentazione, viene \textbf{congelata}: i suoi pesi non ricevono aggiornamenti.
     \item Solo i parametri della \texttt{DetectionHead} rimangono addestrabili.
-    \item Il learning rate viene reimpostato al valore \texttt{--det\_finetune\_lr} (default $10^{-3}$), significativamente più alto del $10^{-6}$ usato nello \texttt{stage2\_hard}, poiché la head deve apprendere da zero anziché effettuare un fine-tuning di precisione.
+    \item Il learning rate viene reimpostato al valore \texttt{--det\_finetune\_lr} (default $10^{-5}$). La \texttt{DetectionHead} \textit{non} arriva a questo stage con pesi casuali: è già stata addestrata congiuntamente durante gli stage 1 e 2, dove ha ricevuto un segnale di gradiente ridotto ma comunque sufficiente a imparare posizioni approssimative. Un learning rate basso preserva questi pesi appresi e li raffina progressivamente; un valore troppo alto (es.\ $10^{-3}$) sovrascrive le rappresentazioni già acquisite, obbligando la head a reimparare da zero e peggiorando le prestazioni.
     \item L'ottimizzatore e il cosine annealing scheduler vengono reinizializzati per questo stage.
 \end{itemize}
 
@@ -321,7 +321,7 @@ python extractor.py \
   --base_dir /data/ecg_clean \
   --load_weights ecg_attention_unet_stage2_hard.pth \
   --resume_stage 3 \
-  --detection --det_finetune_epochs 30 --det_finetune_lr 1e-3
+  --detection --det_finetune_epochs 100 --det_finetune_lr 1e-5
 \end{minted}
 
 \section{Pipeline di Training}
@@ -436,7 +436,7 @@ I due argomenti \texttt{--base\_dir} e \texttt{--base\_dir\_augmented} sono mutu
     \item \textbf{\texttt{--val\_split}} / \textbf{\texttt{--test\_split}}: frazioni di validazione e test (solo con \texttt{--base\_dir\_augmented}); default: \texttt{0.1} ciascuna.
     \item \textbf{\texttt{--detection}}: abilita la \texttt{DetectionHead} multi-task per la localizzazione dei lead; attiva automaticamente lo stage \texttt{det\_finetune} al termine del curriculum (si vedano le Sezioni~\ref{sec:detection_head} e~\ref{sec:det_finetune}).
     \item \textbf{\texttt{--det\_finetune\_epochs}}: epoche per lo stage \texttt{det\_finetune}; default: \texttt{30}.
-    \item \textbf{\texttt{--det\_finetune\_lr}}: learning rate per lo stage \texttt{det\_finetune}; default: \texttt{1e-3}.
+    \item \textbf{\texttt{--det\_finetune\_lr}}: learning rate per lo stage \texttt{det\_finetune}; default: \texttt{1e-5}.
 \end{itemize}
 
 \section{Considerazioni sull'Utilizzo della VRAM}
