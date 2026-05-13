@@ -217,7 +217,7 @@ Il \textit{curriculum learning}~\cite{10.1145/1553374.1553380} è una strategia 
 
 \subsection{Le Quattro Fasi di Addestramento}
 
-L'addestramento si articola in quattro stage successivi. I primi tre costituiscono il curriculum di segmentazione, processati nell'ordine \texttt{stage0\_easy} $\to$ \texttt{stage1\_medium} $\to$ \texttt{stage2\_hard}: la difficoltà delle immagini aumenta progressivamente e il modello non viene mai reinizializzato tra uno stage e il successivo. Il quarto stage, \texttt{det\_finetune}, è attivato dalla presenza del flag \texttt{--detection} e allena esclusivamente la \texttt{DetectionHead} a encoder e decoder congelati, evitando che la perdita di segmentazione soffochi il segnale di gradiente destinato alla regressione dei bounding box (si veda la Sezione~\ref{sec:det_finetune} per i dettagli).
+L'addestramento si articola in quattro stage successivi. I primi tre costituiscono il curriculum di segmentazione pura, processati nell'ordine \texttt{stage0\_easy} $\to$ \texttt{stage1\_medium} $\to$ \texttt{stage2\_hard}: la difficoltà delle immagini aumenta progressivamente e il modello non viene mai reinizializzato tra uno stage e il successivo. Durante questi tre stage la perdita di detection non viene mai calcolata, anche quando il flag \texttt{--detection} è attivo: la \texttt{DetectionHead} esiste nel modello ma non riceve gradiente, preservando la qualità della segmentazione. Il quarto stage, \texttt{det\_finetune}, è attivato dalla presenza del flag \texttt{--detection} e allena esclusivamente la \texttt{DetectionHead} a encoder e decoder congelati (si veda la Sezione~\ref{sec:det_finetune} per i dettagli).
 
 
 
@@ -231,22 +231,23 @@ L'addestramento si articola in quattro stage successivi. I primi tre costituisco
 \label{tab:extractor_stages}
 \setlength{\tabcolsep}{4pt} 
 \begin{tabularx}{\textwidth}{
-    l 
-    >{\RaggedRight\hsize=1.1\hsize}X 
-    >{\RaggedRight\hsize=0.9\hsize}X 
-    l 
     l
-} 
+    >{\RaggedRight\hsize=1.1\hsize}X
+    >{\RaggedRight\hsize=0.9\hsize}X
+    l
+    l
+    l
+}
 \toprule
-\textbf{Stage} & \textbf{Epoche} & \textbf{LR default} & \textbf{Aug.} & \textbf{Condizione} \\
+\textbf{Stage} & \textbf{Epoche} & \textbf{LR default} & \textbf{Aug.} & \textbf{Det.} & \textbf{Condizione} \\
 \midrule
-\texttt{stage0\_easy}   & 20 (fisso) & \texttt{--lr} ($10^{-4}$) & Nessuna & sempre \\
+\texttt{stage0\_easy}   & 20 (fisso) & \texttt{--lr} ($10^{-4}$) & No & No & sempre \\
 \addlinespace[0.5em]
-\texttt{stage1\_medium} & \texttt{--epochs} (100) & \texttt{--lr\_medium} ($10^{-5}$) & Completa & sempre \\
+\texttt{stage1\_medium} & \texttt{--epochs} (100) & \texttt{--lr\_medium} ($10^{-5}$) & Sì & No & sempre \\
 \addlinespace[0.5em]
-\texttt{stage2\_hard}   & \texttt{--epochs} // 2 & \texttt{--lr\_hard} ($10^{-6}$) & Completa & sempre \\
+\texttt{stage2\_hard}   & \texttt{--epochs} // 2 & \texttt{--lr\_hard} ($10^{-6}$) & Sì & No & sempre \\
 \addlinespace[0.5em]
-\texttt{det\_finetune}  & \texttt{--det\_finetune\_epochs} (30) & \texttt{--det\_finetune\_lr} ($10^{-5}$) & Completa & solo \texttt{--det} \\
+\texttt{det\_finetune}  & \texttt{--det\_finetune\_epochs} (30) & \texttt{--det\_finetune\_lr} ($10^{-4}$) & Sì & Sì & solo \texttt{--det} \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -301,14 +302,14 @@ A livello intra-stage, viene utilizzato un \textbf{Cosine Annealing Scheduler}~\
 \section{Stage di Fine-tuning della Detection Head}
 \label{sec:det_finetune}
 
-L'addestramento congiunto di segmentazione e detection presenta un problema strutturale: la perdita di segmentazione domina numericamente quella di detection, assorbendo la quasi totalità del segnale di gradiente. La \texttt{DetectionHead} (descritta in dettaglio nella Sezione~\ref{sec:detection_head}), inizializzata casualmente, riceve un aggiornamento troppo debole per convergere efficacemente durante i tre stage del curriculum.
+Durante gli stage 0, 1 e 2 la \texttt{DetectionHead} (descritta in dettaglio nella Sezione~\ref{sec:detection_head}) è presente nel modello ma non riceve alcun gradiente: solo la perdita di segmentazione viene calcolata e propagata. Questa scelta è motivata da due osservazioni sperimentali: (1) l'addestramento congiunto di segmentazione e detection peggiora la qualità della segmentazione, perché l'encoder si adatta a servire entrambi i task simultaneamente, introducendo interferenze che si manifestano come falsi positivi nella maschera predetta; (2) la perdita di segmentazione è numericamente dominante e assorbe la quasi totalità del segnale di gradiente, rendendo l'addestramento congiunto della head inefficace.
 
-Per risolvere questo problema, al termine dello \texttt{stage2\_hard} viene eseguito automaticamente un quarto stage dedicato esclusivamente alla detection, attivato dalla presenza del flag \texttt{--detection}. Durante questo stage:
+La soluzione adottata è di addestrare la \texttt{DetectionHead} esclusivamente in un quarto stage dedicato, \texttt{det\_finetune}, che si attiva automaticamente quando il flag \texttt{--detection} è presente. Al termine dello \texttt{stage2\_hard}, che produce un encoder e decoder di alta qualità addestrati puramente sulla segmentazione, questo stage viene eseguito con le seguenti modalità:
 
 \begin{itemize}
     \item L'intera U-Net, encoder, decoder e head di segmentazione, viene \textbf{congelata}: i suoi pesi non ricevono aggiornamenti.
     \item Solo i parametri della \texttt{DetectionHead} rimangono addestrabili.
-    \item Il learning rate viene reimpostato al valore \texttt{--det\_finetune\_lr} (default $10^{-5}$). La \texttt{DetectionHead} \textit{non} arriva a questo stage con pesi casuali: è già stata addestrata congiuntamente durante gli stage 1 e 2, dove ha ricevuto un segnale di gradiente ridotto ma comunque sufficiente a imparare posizioni approssimative. Un learning rate basso preserva questi pesi appresi e li raffina progressivamente; un valore troppo alto (es.\ $10^{-3}$) sovrascrive le rappresentazioni già acquisite, obbligando la head a reimparare da zero e peggiorando le prestazioni.
+    \item Il learning rate viene reimpostato al valore \texttt{--det\_finetune\_lr} (default $10^{-4}$). La \texttt{DetectionHead} arriva a questo stage con \textbf{pesi casuali}, poiché non ha ricevuto alcun gradiente durante gli stage precedenti. Un learning rate di $10^{-4}$, tipico per l'addestramento di teste di detection con encoder congelato, consente di convergere in modo stabile entro le epoche configurate.
     \item L'ottimizzatore e il cosine annealing scheduler vengono reinizializzati per questo stage.
 \end{itemize}
 
@@ -321,7 +322,7 @@ python extractor.py \
   --base_dir /data/ecg_clean \
   --load_weights ecg_attention_unet_stage2_hard.pth \
   --resume_stage 3 \
-  --detection --det_finetune_epochs 100 --det_finetune_lr 1e-5
+  --detection --det_finetune_epochs 100 --det_finetune_lr 1e-4
 \end{minted}
 
 \section{Pipeline di Training}
@@ -436,7 +437,7 @@ I due argomenti \texttt{--base\_dir} e \texttt{--base\_dir\_augmented} sono mutu
     \item \textbf{\texttt{--val\_split}} / \textbf{\texttt{--test\_split}}: frazioni di validazione e test (solo con \texttt{--base\_dir\_augmented}); default: \texttt{0.1} ciascuna.
     \item \textbf{\texttt{--detection}}: abilita la \texttt{DetectionHead} multi-task per la localizzazione dei lead; attiva automaticamente lo stage \texttt{det\_finetune} al termine del curriculum (si vedano le Sezioni~\ref{sec:detection_head} e~\ref{sec:det_finetune}).
     \item \textbf{\texttt{--det\_finetune\_epochs}}: epoche per lo stage \texttt{det\_finetune}; default: \texttt{30}.
-    \item \textbf{\texttt{--det\_finetune\_lr}}: learning rate per lo stage \texttt{det\_finetune}; default: \texttt{1e-5}.
+    \item \textbf{\texttt{--det\_finetune\_lr}}: learning rate per lo stage \texttt{det\_finetune}; default: \texttt{1e-4}.
 \end{itemize}
 
 \section{Considerazioni sull'Utilizzo della VRAM}
@@ -502,17 +503,41 @@ Il flag \texttt{--detection} estende il modello base con una \textbf{head di det
 
 Quando \texttt{--detection} è attivo, la classe \texttt{smp.Unet} viene sostituita da \texttt{ECGMultiTaskModel}, che condivide l'encoder e il decoder con il task di segmentazione e aggiunge una \texttt{DetectionHead} collegata al collo di bottiglia dell'encoder.
 
-La scelta cruciale riguarda \textit{come} condensare le feature maps spaziali del bottleneck, di forma \texttt{(B, C, H, W)}, in un vettore. Un \textit{global average pooling} collasserebbe tutte le dimensioni spaziali in un unico valore per canale, distruggendo le informazioni su \textit{dove} si trovano i lead nell'immagine e costringendo il modello a predire bounding box allineati agli assi. Per preservare la struttura spaziale, la head utilizza invece un \textbf{pooling separato per strisce orizzontali e verticali}:
+La scelta cruciale riguarda \textit{come} estrarre dalla feature map spaziale, di forma \texttt{(B, C, H, W)}, una rappresentazione per ciascuno dei 12 lead che preservi le informazioni sulla loro posizione. Un \textit{global average pooling} collasserebbe tutte le dimensioni spaziali in un unico vettore condiviso: tutti i lead dovrebbero essere localizzati a partire dalla stessa rappresentazione globale, senza alcun meccanismo che permetta a ciascun lead di ``guardare'' nella propria regione dell'immagine.
+
+La soluzione adottata è una \textbf{cross-attention per lead}: ciascuno dei 12 lead riceve un vettore di query dedicato, appreso durante il training, che seleziona autonomamente le celle spaziali rilevanti attraverso un meccanismo di attenzione:
 
 \begin{enumerate}
-    \item Una convoluzione $1\times1$ riduce i canali da $C$ a 256, seguita da batch normalization~\cite{ioffe2015batchnormalization} e ReLU.
-    \item Un \textit{row-strip pooling} divide l'asse verticale in 16 fasce e ne calcola la media lungo l'asse orizzontale, producendo un vettore di dimensione $256 \times 16$.
-    \item Un \textit{col-strip pooling} divide l'asse orizzontale in 16 fasce e ne calcola la media lungo l'asse verticale, producendo un vettore di dimensione $256 \times 16$.
-    \item I due vettori vengono concatenati (dimensione totale 8192) e passati a un MLP con uno strato nascosto da 512 neuroni, ReLU e dropout (0.3).
-    \item Il layer finale produce $12 \times 13$ logit: 1 (presenza) $+ 6$ (bounding box lead) $+ 6$ (bounding box etichetta) per ognuno dei 12 lead.
+    \item Una convoluzione $1\times1$ riduce i canali da $C$ a $d = 256$, seguita da batch normalization~\cite{ioffe2015batchnormalization} e ReLU. La feature map risultante è di forma \texttt{(B, 256, H, W)}: ogni cella della griglia $H \times W$ contiene un vettore da 256 valori che descrive il contenuto visivo in quella porzione dell'immagine.
+
+    \item La griglia spaziale viene appiattita in una sequenza lineare di celle: \texttt{(B, 256, H, W)} $\to$ \texttt{(B, HW, 256)}. Il risultato è una matrice di $HW$ righe, ciascuna corrispondente a una cella spaziale con il suo vettore descrittivo da 256 dimensioni.
+
+    \item Per ciascuno dei 12 lead viene definito un \textbf{vettore di query} $\mathbf{q}_k \in \mathbb{R}^{256}$, $k = 1, \ldots, 12$, i cui valori sono parametri appresi durante il training. Questi vettori codificano, al termine dell'addestramento, le caratteristiche visive tipiche di ciascun lead: la query del lead \textit{I} risulterà diversa da quella del lead \textit{V1}, perché i due lead occupano regioni diverse dell'immagine con caratteristiche spaziali distinte. Prima del training, le query sono inizializzate con valori casuali vicini allo zero, in modo che l'attenzione parta quasi uniforme su tutte le celle e impari progressivamente a concentrarsi.
+
+    \item Per calcolare quanto ciascuna cella spaziale sia rilevante per un dato lead, si misura la \textbf{similarità} tra la query del lead e il vettore descrittivo di ogni cella, tramite prodotto scalare. Un prodotto scalare alto indica che la cella ``assomiglia'' a ciò che la query del lead cerca; uno basso indica irrilevanza. Il risultato per ogni lead è un vettore di $HW$ punteggi di similarità grezzi, uno per cella.
+
+    Questi punteggi vengono convertiti in pesi tramite il \textbf{softmax}. Data una sequenza di punteggi $s_1, \ldots, s_{HW}$, il softmax restituisce:
+    \[
+        w_i = \frac{e^{s_i}}{\displaystyle\sum_{j=1}^{HW} e^{s_j}}
+    \]
+    Il softmax ha due proprietà essenziali: tutti i pesi $w_i$ sono strettamente positivi, e la loro somma è esattamente 1. Questo trasforma i punteggi grezzi in una \textit{distribuzione di probabilità} sulle celle spaziali, interpretabile come ``quanto il lead $k$ sta guardando questa cella''. La funzione esponenziale amplifica le differenze: una cella con punteggio leggermente superiore alle altre riceve un peso molto più alto, spingendo il meccanismo verso una \textit{selezione soffice} della regione più rilevante piuttosto che una media uniforme. I punteggi vengono divisi per $\sqrt{d}$ prima del softmax: senza questa normalizzazione, con vettori di dimensione $d = 256$, il prodotto scalare tende ad assumere valori molto grandi in modulo, portando il softmax a saturare (pesi prossimi a 0 o 1) e i gradienti a diventare quasi nulli, rallentando o bloccando il training.
+
+    In forma matriciale, calcolando simultaneamente tutti i 12 lead:
+    \[
+        \mathbf{W} = \mathrm{softmax}\!\left(\frac{\mathbf{Q}\,\mathbf{X}^\top}{\sqrt{d}}\right) \in \mathbb{R}^{12 \times HW}
+    \]
+    dove $\mathbf{Q} \in \mathbb{R}^{12 \times 256}$ è la matrice delle 12 query, $\mathbf{X} \in \mathbb{R}^{HW \times 256}$ è la matrice delle celle spaziali e il softmax è applicato riga per riga. La riga $k$ di $\mathbf{W}$ è la \textit{mappa di attenzione} del lead $k$: un vettore di $HW$ pesi che indica, per ogni cella, quanto essa contribuisce alla rappresentazione di quel lead.
+
+    \item Il \textbf{vettore di contesto} $\mathbf{a}_k$ per il lead $k$ si ottiene come combinazione lineare delle righe di $\mathbf{X}$, pesata dai coefficienti della riga $k$ di $\mathbf{W}$:
+    \[
+        \mathbf{a}_k = \sum_{i=1}^{HW} w_{ki}\,\mathbf{x}_i \in \mathbb{R}^{256}
+    \]
+    dove $w_{ki}$ è il peso di attenzione del lead $k$ sulla cella $i$ e $\mathbf{x}_i \in \mathbb{R}^{256}$ è il vettore descrittivo di quella cella. Poiché i pesi sommano a 1, il risultato è una \textit{media pesata} dei descrittori di cella: le celle in cui la query del lead ha trovato alta similarità contribuiscono con peso elevato, quelle irrilevanti con peso quasi zero. Il vettore $\mathbf{a}_k$ sintetizza quindi le caratteristiche visive dell'intera feature map \textit{filtrate sulla regione di interesse del lead $k$}: non contiene informazioni su dove si trova la regione nello spazio (le coordinate sono state perse nell'appiattimento al passo 2), ma contiene \textit{cosa} quella regione contiene visivamente, nella stessa forma di un vettore di 256 feature. In forma matriciale per tutti i 12 lead simultaneamente: $\mathbf{A} = \mathbf{W}\,\mathbf{X} \in \mathbb{R}^{12 \times 256}$, dove ogni riga è il vettore di contesto del rispettivo lead.
+
+    \item Ogni vettore di contesto $\mathbf{a}_k$ viene infine passato a un piccolo MLP indipendente per lead (proiezione $256 \to 128$, ReLU, dropout 0.3, proiezione $128 \to 13$), che produce 13 logit: 1 scalare per la presenza del lead $+$ 6 parametri per il bounding box del tracciato $+$ 6 parametri per il bounding box dell'etichetta testuale.
 \end{enumerate}
 
-Il vettore di 8192 valori viene elaborato da un \textbf{MLP} (\textit{Multilayer Perceptron}): una rete di neuroni \textit{fully-connected} organizzata in layer sequenziali, in cui ogni neurone è connesso a tutti i neuroni del layer precedente. Come funzione di attivazione non lineare viene utilizzata la \textbf{ReLU} (\textit{Rectified Linear Unit}), definita come $f(x) = \max(0, x)$: azzera i valori negativi e lascia invariati quelli positivi. Questa non-linearità è essenziale perché senza di essa l'MLP si ridurrebbe a una semplice trasformazione lineare, incapace di modellare le relazioni complesse tra la struttura spaziale dell'immagine e le coordinate dei bounding box.
+Grazie alla cross-attention, ciascun lead apprende a concentrarsi sulla propria porzione della feature map: i pesi di attenzione diventano, dopo il training, una mappa di localizzazione implicita specifica per quel lead. Questo è strutturalmente superiore al pooling globale o per strisce, che forniscono la stessa rappresentazione condivisa a tutti i lead costringendo l'MLP finale a risolvere il problema di localizzazione senza informazioni spaziali differenziate.
 
 La head è collegata al \textbf{penultimo livello dell'encoder} (\texttt{features[-2]}, corrispondente al \texttt{layer3} di ResNet50) anziché al bottleneck più profondo (\texttt{features[-1]}). Il bottleneck ha risoluzione spaziale dimezzata rispetto al \texttt{layer3} per via dell'ulteriore passo di downsampling: collegare la head a \texttt{layer3} raddoppia il numero di celle spaziali disponibili per ciascuna fascia e consente una regressione delle coordinate del centro significativamente più precisa, a fronte di un aumento modesto del consumo di VRAM ($\sim$100 MB per batch di 8 immagini a 1024 px).
 
@@ -554,13 +579,17 @@ La perdita totale è la somma della perdita di segmentazione e della perdita di 
 La perdita di detection è a sua volta composta da tre termini:
 
 \[
-    \mathcal{L}_{\text{det}} = w_p\,\mathcal{L}_{\text{BCE}}(\text{presenza}) + w_b\,\mathcal{L}_{\text{SL1}}(c_x,c_y,w,h) + w_a\,\mathcal{L}_{\text{MSE}}(\sin 2\theta, \cos 2\theta)
+    \mathcal{L}_{\text{det}} = w_p\,\mathcal{L}_{\text{BCE}}(\text{presenza}) + w_b\,\mathcal{L}_{\text{GIoU}}(c_x,c_y,w,h) + w_a\,\mathcal{L}_{\text{MSE}}(\sin 2\theta, \cos 2\theta)
 \]
 
 \begin{itemize}
     \item \textbf{BCE -- Binary Cross-Entropy per la presenza:} per ciascuno dei 12 lead, il modello produce un logit scalare che, dopo la sigmoid, rappresenta la probabilità che quel lead sia visibile nell'immagine. La BCE misura la discrepanza tra questa probabilità e il valore binario di ground truth (0 = assente, 1 = presente), penalizzando le predizioni lontane dal target.
 
-    \item \textbf{Smooth-L1 per le coordinate geometriche $(c_x, c_y, w, h)$:} la Smooth-L1~\cite{girshick2015fastrcnn}, nota anche come perdita di Huber, combina il comportamento della L1 (valore assoluto dell'errore) e della L2 (quadrato dell'errore). Per errori piccoli si comporta come la L2, fornendo gradienti più informativi vicino allo zero; per errori grandi si comporta come la L1, crescendo linearmente anziché quadraticamente. Questa doppia natura la rende robusta agli \textit{outlier}: un'annotazione imprecisa o una predizione inizialmente molto sbagliata producono un gradiente di modulo limitato, evitando aggiornamenti destabilizzanti.
+    \item \textbf{GIoU per le coordinate geometriche $(c_x, c_y, w, h)$:} la \textit{Generalized Intersection over Union}~\cite{DBLP:journals/corr/abs-1902-09630} ottimizza direttamente la qualità della sovrapposizione tra bounding box predetto e ground truth, a differenza delle perdite coordinate-wise come Smooth-L1 che trattano ogni parametro in modo indipendente. La GIoU è definita come:
+    \[
+        \mathcal{L}_{\text{GIoU}} = 1 - \underbrace{\frac{|B \cap G|}{|B \cup G|}}_{\text{IoU}} + \frac{|C \setminus (B \cup G)|}{|C|}
+    \]
+    dove $B$ è il bounding box predetto, $G$ è il ground truth, $C$ è il rettangolo di contenimento minimo (asse-allineato) che li include entrambi, e $|\cdot|$ indica l'area. Il primo termine è la IoU standard: vale 0 quando i box non si sovrappongono e 1 quando coincidono perfettamente. Il secondo termine penalizza il volume ``sprecato'' nel contenitore esterno, fornendo un segnale di gradiente anche quando i box sono completamente disgiunti -- situazione in cui la IoU sarebbe zero e il suo gradiente nullo.
 
     \item \textbf{MSE per i componenti angolari $(\sin 2\theta, \cos 2\theta)$:} la MSE (\textit{Mean Squared Error}) calcola la media dei quadrati degli errori su ciascun componente. È preferita qui perché i valori target sono compresi in $[-1, 1]$ (codominio di seno e coseno), per cui grandi errori sono impossibili per costruzione e la crescita quadratica non genera gradienti esplosivi. Inoltre la penalizzazione è simmetrica rispetto all'errore zero, il che è coerente con la natura circolare dell'angolo: sovrastimare e sottostimare di pari quantità sono errori equivalenti.
 \end{itemize}
