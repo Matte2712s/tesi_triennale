@@ -22,8 +22,6 @@ Per facilitare la riproducibilità e semplificare il deployment su sistemi etero
 
 Il dataset utilizzato come sorgente dei segnali ECG è \textbf{PTB-XL}~\cite{PhysioNet-ptb-xl-1.0.3}, una raccolta pubblica disponibile su PhysioNet contenente 21\,799 registrazioni ECG a 12 derivazioni della durata di 10 secondi ciascuna, acquisite su 18\,869 pazienti. Ogni registrazione è distribuita nel formato WFDB con frequenza di campionamento di 500 Hz (o 100 Hz nella versione a bassa risoluzione) e accompagnata da metadati clinici (età, sesso, diagnosi codificata secondo lo standard SCP-ECG \cite{7868741}) in un file CSV condiviso.
 
-La scelta di PTB-XL come dataset di riferimento è motivata dalla sua ampiezza, dalla varietà delle patologie rappresentate e dalla disponibilità pubblica, che lo rende lo standard \textit{de facto} per la valutazione di sistemi di analisi e digitalizzazione di ECG.
-
 \section{Configurazioni di Generazione}
 
 Sono state definite tre configurazioni di generazione principali, con complessità crescente, che corrispondono a scenari d'uso tipici del sistema.
@@ -197,7 +195,7 @@ La Figura~\ref{fig:bench_scale} mostra l'andamento di speedup ed efficienza al v
 Il Ryzen 5700X è una CPU con 8 core fisici e 16 thread logici (\textit{Simultaneous Multi-Threading}, SMT). L'hyperthreading permette a ogni core di eseguire due thread in modo interleaved, condividendo le unità di esecuzione: funziona bene quando i thread sono in attesa (I/O, cache miss), ma non quando entrambi richiedono continuamente le stesse risorse aritmetiche. La generazione di immagini ECG è prevalentemente CPU-bound, operazioni su array NumPy, compositing, trasformate, per cui ogni thread occupa il core quasi al 100\%. Passando da 8 a 16 worker si aggiungono solo thread logici sugli stessi core fisici, aumentando la contesa sulle unità di esecuzione anziché aggiungere capacità computazionale reale. Questo spiega il calo effettivo di speedup da $3.03\times$ (8 worker) a $2.47\times$ (16 worker).
 
 \paragraph{Saturazione della banda di memoria.}
-Con molti processi attivi simultaneamente, ciascuno carica file WFDB e alloca array NumPy di grandi dimensioni. La memoria DDR4 a canale singolo ha una banda di trasferimento limitata: quando tutti i processi richiedono dati contemporaneamente il bus diventa collo di bottiglia, aumentando le latenze e vanificando parte del parallelismo.
+Con molti processi attivi simultaneamente, ciascuno carica file WFDB e alloca array NumPy di grandi dimensioni. La memoria DDR4 ha una banda di trasferimento limitata: quando tutti i processi richiedono dati contemporaneamente il bus diventa collo di bottiglia, aumentando le latenze e vanificando parte del parallelismo.
 
 \paragraph{Overhead di coordinazione.}
 Il \texttt{ProcessPoolExecutor} serializza gli argomenti di ogni task attraverso \textit{pickling} Python prima di inviarli al worker process, e riceve indietro eventuali eccezioni con lo stesso meccanismo. All'aumentare dei worker cresce anche il numero di processi che il sistema operativo deve schedulare, introducendo context switch e overhead di sincronizzazione che pesano proporzionalmente di più rispetto al lavoro utile svolto.
