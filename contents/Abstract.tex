@@ -3,11 +3,11 @@
 
 \vspace{0.5cm}
 
-\noindent \textbf{Contesto e Motivazione:} Nonostante la progressiva digitalizzazione dei flussi di lavoro clinici, una vasta quantità di dati storici e diagnostici relativi all'elettrocardiografia (ECG) rimane conservata esclusivamente in formato cartaceo o scansioni analogiche. La conversione automatica di questi documenti in segnali digitali numerici è essenziale per l'analisi computazionale su larga scala. Tuttavia, lo sviluppo di modelli di Computer Vision robusti è spesso ostacolato dalla carenza di dataset annotati che presentino la variabilità e le imperfezioni tipiche dei documenti ospedalieri reali.
+\noindent \textbf{Contesto e Motivazione:} Nonostante i progressi tecnologici degli ultimi decenni, la digitalizzazione dei flussi di lavoro clinici è ancora largamente incompleta e si prospetta come una transizione lenta: una vasta quantità di dati storici e diagnostici relativi all'elettrocardiografia (ECG) rimane conservata esclusivamente in formato cartaceo o scansioni analogiche. La conversione automatica di questi documenti in segnali digitali numerici è essenziale per l'analisi computazionale su larga scala. Tuttavia, lo sviluppo di modelli di Computer Vision robusti è spesso ostacolato dalla carenza di dataset annotati che presentino la variabilità e le imperfezioni tipiche dei documenti ospedalieri reali.
 
 \vspace{0.2cm}
 
-\noindent \textbf{Obiettivo:} Il presente lavoro propone una pipeline a due stadi per la digitalizzazione di immagini ECG: un sistema di generazione sintetica per la creazione di dataset massivi annotati, e un modello di segmentazione semantica per l'estrazione automatica dei tracciati dalle immagini. L'obiettivo è colmare il divario tra i dati sintetici ideali e la complessità dei tracciati fisici reperibili negli archivi clinici, fornendo al contempo uno strumento in grado di operare su immagini degradate reali.
+\noindent \textbf{Obiettivo:} Il presente lavoro propone una pipeline a due stadi per il preprocessing di immagini ECG: un sistema di generazione sintetica per la creazione di dataset massivi annotati, e un modello di segmentazione semantica per il rilevamento e l'isolamento dei tracciati in immagini degradate. L'obiettivo è costruire un sistema robusto capace di separare il tracciato ECG dal contesto documentale anche in presenza degli artefatti e delle imperfezioni tipici degli archivi clinici reali. La conversione delle maschere ottenute in segnali numerici analizzabili, passo necessario per una digitalizzazione completa, non è stata realizzata in questo lavoro e rappresenta un naturale sviluppo futuro.
 
 \vspace{0.2cm}
 
@@ -21,5 +21,5 @@
 
 \vspace{0.2cm}
 
-\noindent \textbf{Risultati e Conclusioni:} L'approccio permette di generare una vasta varietà di campioni con una \textit{ground truth} intrinseca, utilizzabili direttamente per addestrare il modello di segmentazione senza annotazione manuale. L'integrazione di artefatti realistici nel processo di generazione sintetica, come suggerito da Li et al. \cite{li2020deep} per la robustezza dei modelli in presenza di disturbi strutturali e casuali, risulta fondamentale per la generalizzazione del segmentatore a documenti clinici reali. Il sistema si configura come uno strumento completo per la valorizzazione del patrimonio informativo contenuto negli archivi cardiologici, ponendo le basi per una completa automazione del recupero dati clinici.
+\noindent \textbf{Risultati e Conclusioni:} L'approccio permette di generare una vasta varietà di campioni con una \textit{ground truth} intrinseca, utilizzabili direttamente per addestrare il modello di segmentazione senza annotazione manuale. L'integrazione di artefatti realistici nel processo di generazione sintetica risulta fondamentale per la generalizzazione del segmentatore a documenti clinici reali. Il sistema si configura come uno strumento completo per la valorizzazione del patrimonio informativo contenuto negli archivi cardiologici, ponendo le basi per una completa automazione del recupero dati clinici.
 \end{abstract}

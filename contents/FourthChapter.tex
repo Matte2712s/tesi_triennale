@@ -22,6 +22,10 @@ Per facilitare la riproducibilità e semplificare il deployment su sistemi etero
 
 Il dataset utilizzato come sorgente dei segnali ECG è \textbf{PTB-XL}~\cite{PhysioNet-ptb-xl-1.0.3}, una raccolta pubblica disponibile su PhysioNet contenente 21\,799 registrazioni ECG a 12 derivazioni della durata di 10 secondi ciascuna, acquisite su 18\,869 pazienti. Ogni registrazione è distribuita nel formato WFDB con frequenza di campionamento di 500 Hz (o 100 Hz nella versione a bassa risoluzione) e accompagnata da metadati clinici (età, sesso, diagnosi codificata secondo lo standard SCP-ECG \cite{7868741}) in un file CSV condiviso.
 
+\subsection{Dataset di Input: CODE-15\%}
+
+Il sistema supporta inoltre \textbf{CODE-15\%}~\cite{ribeiro_2021_4916206}, un dataset pubblico di ECG a 12 derivazioni raccolto in Brasile su oltre 345\,000 esami. I segnali sono campionati a 400 Hz con una durata prevalente di 10 secondi (4000 campioni), con alcune registrazioni più brevi di 7 secondi (2800 campioni), distribuiti in file HDF5. I metadati clinici (età, sesso, diagnosi) sono forniti separatamente in un file CSV. Il supporto a questo formato è stato introdotto come contributo originale al progetto, estendendo la pipeline oltre il solo standard WFDB.
+
 \section{Configurazioni di Generazione}
 
 Sono state definite tre configurazioni di generazione principali, con complessità crescente, che corrispondono a scenari d'uso tipici del sistema.
@@ -89,10 +93,10 @@ Le figure seguenti mostrano esempi rappresentativi dell'output prodotto dal sist
     \hfill
     \begin{subfigure}[t]{0.48\textwidth}
         \includegraphics[width=\textwidth]{images/sample_clean.png}
-        \caption{Ground truth visiva (\texttt{--generate\_clean}): solo tracciati in bianco su sfondo nero.}
+        \caption{Maschera (\texttt{--generate\_clean}): solo tracciati in bianco su sfondo nero.}
         \label{fig:sample_clean}
     \end{subfigure}
-    \caption{Confronto tra immagine sintetica e corrispondente ground truth.}
+    \caption{Confronto tra immagine sintetica e corrispondente maschera.}
     \label{fig:sample_pair}
 \end{figure}
 
@@ -338,10 +342,10 @@ Per ogni record ECG elaborato il sistema produce i seguenti file nella directory
 
 \begin{itemize}
     \item \textbf{Immagine PNG sintetica} (\texttt{<id>\_lr-<n>.png}): l'immagine principale con griglia, tracciati, etichette e tutti gli artefatti configurati. Il suffisso \texttt{-<n>} (a partire da 0) distingue le varianti generate dallo stesso record.
-    \item \textbf{Immagine PNG pulita} (\texttt{<id>\_lr-<n>\_clean.png}, opzionale): la ground truth visiva, generata quando \texttt{--generate\_clean} è attivo. Contiene solo i tracciati in bianco su sfondo nero, senza griglia né artefatti, con le stesse trasformazioni geometriche dell'immagine principale.
+    \item \textbf{Maschera} (\texttt{<id>\_lr-<n>\_clean.png}, opzionale): immagine binaria generata quando \texttt{--generate\_clean} è attivo. Contiene solo i tracciati in bianco su sfondo nero, senza griglia né artefatti, con le stesse trasformazioni geometriche dell'immagine principale.
     \item \textbf{File WFDB aggiornati} (\texttt{<id>\_lr.hea} e \texttt{<id>\_lr.dat}): copia dei file di segnale originali con la segmentazione temporale applicata e, se \texttt{--mask\_unplotted\_samples} è attivo, i campioni non rappresentati mascherati con \texttt{NaN}.
     \item \textbf{File JSON di configurazione} (\texttt{<id>\_lr-<n>.json}, opzionale): serializza i parametri di generazione e le annotazioni geometriche (bounding box delle derivazioni e dei nomi, coordinate pixel dei segnali plottati) secondo il livello di dettaglio configurato tramite \texttt{--store\_config}.
 \end{itemize}
 
 \vspace{4mm}
-La coppia immagine sintetica / ground truth visiva, combinata con le annotazioni JSON, rende il dataset direttamente utilizzabile per tre tipologie di task supervisionati: \textbf{segmentazione semantica} (separare segnale da griglia e artefatti), \textbf{object detection} (localizzare le derivazioni tramite bounding box) e \textbf{digitalizzazione} (ricostruire il segnale digitale dall'immagine tramite le coordinate pixel plottate).
+La coppia immagine sintetica / maschera, combinata con le annotazioni JSON, rende il dataset direttamente utilizzabile per tre tipologie di task supervisionati: \textbf{segmentazione semantica} (separare segnale da griglia e artefatti), \textbf{object detection} (localizzare le derivazioni tramite bounding box) e \textbf{digitalizzazione} (ricostruire il segnale digitale dall'immagine tramite le coordinate pixel plottate).

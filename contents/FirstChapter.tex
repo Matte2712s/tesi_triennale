@@ -5,25 +5,20 @@ L'intelligenza artificiale ha aperto nuove frontiere nella gestione dei segnali 
 \section{Inquadramento del problema}
 La digitalizzazione automatica degli ECG richiede un processo di ricostruzione del segnale capace di isolare l'attività elettrica del cuore da elementi di disturbo quali griglie millimetrate, pieghe della carta e macchie di inchiostro. La capacità di generalizzazione dei modelli di Deep Learning dipende interamente dalla varietà dei dati su cui vengono allenati; senza un dataset che includa campioni \textbf{difficili} e deteriorati, le performance su documenti clinici reali rimangono limitate.
 
+\section{Lavori Correlati}
+Il problema della digitalizzazione degli ECG cartacei è già stato affrontato in letteratura. Li et al.~\cite{li2020deep} propongono un approccio basato su deep learning per la segmentazione di scansioni ECG ad alto rumore, ottenendo risultati promettenti; tuttavia il modello non è rilasciato pubblicamente. ECG-Image-Kit~\cite{ecgimagekitpaper} offre invece un toolbox open source per la generazione sintetica di immagini ECG, ma manca di alcune funzionalità necessarie per produrre immagini sufficientemente degradate, limitando la capacità del sistema di simulare le condizioni reali dei documenti clinici. Questo lavoro si propone di colmare tale gap costruendo una pipeline di generazione più controllata e un segmentatore addestrato specificamente su immagini con artefatti realistici.
+
 \section{Obiettivo del lavoro: Generazione Sintetica e Segmentazione}
 Il presente lavoro propone una pipeline a due stadi per la digitalizzazione di immagini ECG. Il primo stadio si focalizza sulla \textbf{generazione sintetica} di immagini ECG realistiche: partendo da un dataset di segnali digitali preesistente, il framework trasforma i dati numerici in rappresentazioni visuali sottoponendole a una pipeline di degradazione controllata, producendo coppie immagine degradata / ground truth binaria. Il secondo stadio sfrutta queste coppie per addestrare un modello di \textbf{segmentazione semantica} capace di isolare i tracciati del segnale da griglia, artefatti e sfondo nelle immagini reali.
 
 \subsection{Integrazione di Artefatti per la Robustezza}
 Un contributo centrale risiede nella creazione di un sistema di \textit{data augmentation} avanzato che alimenta direttamente il training del segmentatore. Come dimostrato da Li et al.~\cite{li2020deep}, l'esposizione del modello a disturbi strutturali durante il training è fondamentale per superare il \textit{domain gap} tra i dati sintetici e le scansioni reali, permettendo di incrementarne la robustezza.
 
-\section{Struttura della tesi}
-L'elaborato descrive lo sviluppo e la logica del sistema di trasformazione:
-\begin{itemize}
-    \item \textbf{Capitolo 2:} Descrizione dell'architettura del software e logica di rendering.
-    \item \textbf{Capitolo 3:} Analisi della pipeline di artefatti e gestione della varietà del dataset prodotto.
-    \item \textbf{Capitolo 4:} Risultati ottenuti e configurazione sperimentale.
-    \item \textbf{Capitolo 5:} Modulo di estrazione del segnale ECG tramite segmentazione semantica: architettura del modello, curriculum learning e pipeline di addestramento.
-\end{itemize}
-
-
+\section{L'Elettrocardiogramma}
+L'elettrocardiogramma (ECG) è un esame diagnostico che registra l'attività elettrica del cuore nel tempo. Il formato clinico standard è quello a 12 derivazioni, che acquisisce il segnale da dodici prospettive differenti: le derivazioni periferiche (I, II, III, aVR, aVL, aVF), che misurano l'attività elettrica sul piano frontale, e le derivazioni precordiali (V1--V6), posizionate sul torace per rilevare l'attività sul piano orizzontale. Ogni derivazione produce un tracciato caratteristico, la cui morfologia riflette specifici aspetti della propagazione dell'impulso elettrico nel miocardio. Il referto cartaceo standard organizza questi tracciati su un foglio millimetrato, tipicamente in una griglia di tre colonne da quattro derivazioni ciascuna, con una striscia ritmica in calce.
 
 \section{Processo di Trasformazione Immagine}
-La pipeline si articola in due stadi principali: la conversione del segnale in immagine e l'iniezione controllata di artefatti. Le \textbf{figure \ref{fig:raw_data}, \ref{fig:clean_plot} e \ref{fig:augmented_plot}} mostrano visivamente il processo: partendo dal segnale digitale grezzo, il modulo di rendering produce una rappresentazione grafica, sulla quale vengono applicati i disturbi per simulare le condizioni di conservazione e scansione dei documenti clinici.
+La pipeline si articola in due stadi principali: la conversione del segnale in immagine e l'iniezione controllata di artefatti. Il rendering è realizzato tramite Matplotlib, configurato per garantire una corrispondenza millimetrica tra il segnale e i pixel del canvas. Gli artefatti vengono iniettati tramite una pipeline basata su imgaug~\cite{imgaug}, che include distorsioni geometriche, variazioni di contrasto, rumore e simulazione di pieghe. Le \textbf{figure \ref{fig:raw_data}, \ref{fig:clean_plot} e \ref{fig:augmented_plot}} mostrano visivamente il processo: partendo dal segnale digitale grezzo, il modulo di rendering produce una rappresentazione grafica pulita, sulla quale vengono applicati i disturbi per simulare le condizioni di conservazione e scansione dei documenti clinici.
 
 \begin{figure}[htbp]
     \centering
@@ -64,3 +59,15 @@ La trasformazione dal segnale digitale alla rappresentazione grafica è gestita 
 \vspace{4mm}
 
 Nel prossimo capitolo, verrà analizzata l'architettura del sistema, descrivendo nel dettaglio le fasi di acquisizione dei dati, la configurazione del motore di rendering e l'implementazione tecnica della pipeline di degradazione.
+
+\section{Processo di Addestramento del Modello}
+Le coppie immagine degradata / maschera binaria prodotte dalla pipeline di generazione vengono utilizzate direttamente per addestrare un modello di segmentazione semantica basato su reti neurali convoluzionali, che sfruttano la struttura spaziale locale dell'immagine per apprendere a distinguere il tracciato dal contesto documentale. L'architettura scelta è una U-Net con decoder potenziato da meccanismi di attenzione scSE, in grado di focalizzarsi selettivamente sulle regioni del tracciato anche in presenza di artefatti severi. L'addestramento segue una strategia di curriculum learning a tre stadi di difficoltà crescente: il modello viene esposto prima a immagini pulite, poi a degradazioni moderate, infine ai campioni più complessi, con unfreezing progressivo dell'encoder. Questo approccio consente di costruire una rappresentazione stabile delle caratteristiche del segnale prima di affrontare i casi difficili, migliorando la generalizzazione su documenti clinici reali.
+
+\section{Struttura della tesi}
+L'elaborato descrive lo sviluppo e la logica del sistema di trasformazione:
+\begin{itemize}
+    \item \textbf{Capitolo 2:} Descrizione dell'architettura del software e logica di rendering.
+    \item \textbf{Capitolo 3:} Analisi della pipeline di artefatti e gestione della varietà del dataset prodotto.
+    \item \textbf{Capitolo 4:} Risultati ottenuti e configurazione sperimentale.
+    \item \textbf{Capitolo 5:} Modulo di estrazione del segnale ECG tramite segmentazione semantica: architettura del modello, curriculum learning e pipeline di addestramento.
+\end{itemize}
