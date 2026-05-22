@@ -22,21 +22,8 @@ La pipeline si articola in due stadi principali: la conversione del segnale in i
 
 \begin{figure}[htbp]
     \centering
-    \footnotesize
-    \texttt{
-    89ff c9ff 4000 5600 \\
-    a5ff 0400 bbff e1ff \\
-    0000 e6ff d9ff b1ff \\
-    8cff cdff 4100 5300 \\
-    a6ff 0600 c0ff dcff \\
-    fdff e1ff deff b6ff \\
-    88ff d4ff 4c00 5200 \\
-    9eff 1000 c6ff deff \\
-    f6ff e4ff e3ff bbff \\
-    8bff daff 5000 4d00 \\
-    \ldots
-    }
-    \caption{Dato grezzo: snippet esadecimale estratto dal dataset ECG.}
+    \includegraphics[width=0.85\textwidth, keepaspectratio]{images/raw_data_timeseries.png}
+    \caption{Dato grezzo: primi 10 campioni delle 12 derivazioni ECG in mV (campione PTB-XL 00001, frequenza di campionamento 100~Hz).}
     \label{fig:raw_data}
 \end{figure}
 

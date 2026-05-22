@@ -6,7 +6,7 @@ Il presente capitolo descrive il modulo \texttt{ecg-signal-extractor}, che imple
 
 Il generatore descritto nei capitoli precedenti produce immagini ECG sintetiche realistiche accompagnate dalla corrispondente ground truth visiva: un'immagine binaria in cui i pixel bianchi rappresentano esclusivamente i tracciati del segnale, senza griglia né artefatti. Questa coppia costituisce l'input ideale per addestrare un modello di \textit{segmentazione semantica}, il cui obiettivo è apprendere la mappatura inversa: data un'immagine ECG con tutti i suoi artefatti, produrre una maschera binaria che individui i pixel appartenenti al tracciato.
 
-Il task è intrinsecamente difficile per tre ragioni. In primo luogo, i tracciati ECG sono strutture sottili, spesso di pochi pixel di spessore, disperse su un'area molto estesa; una piccola imprecisione della maschera predetta si traduce in un errore sistematico nella ricostruzione numerica del segnale. In secondo luogo, la griglia millimetrata condivide alcune caratteristiche visive con i tracciati (linee sottili, orientamento misto orizzontale-verticale), rendendo la discriminazione non banale. In terzo luogo, gli artefatti applicati dal generatore, pieghe, testo manoscritto, rumore fotometrico, modificano localmente l'aspetto del segnale, richiedendo che il modello sia robusto a una vasta gamma di condizioni degradate.
+Il task è intrinsecamente difficile per tre ragioni. In primo luogo, i tracciati ECG sono strutture sottili, spesso di pochi pixel di spessore, disperse su un'area molto estesa; una piccola imprecisione della maschera predetta si traduce in un errore sistematico nella ricostruzione numerica del segnale. In secondo luogo, la griglia millimetrata condivide alcune caratteristiche visive con i tracciati (linee sottili, orientamento misto orizzontale-verticale), rendendo la discriminazione non banale; il problema è ulteriormente aggravato dal fatto che molti ECG reali sono acquisiti o archiviati in bianco e nero, eliminando la differenza cromatica tra la griglia (tipicamente rosa o rossa) e il tracciato nero che, nei documenti a colori, aiuta la separazione visiva. In terzo luogo, gli artefatti applicati dal generatore, pieghe, testo manoscritto, rumore fotometrico, modificano localmente l'aspetto del segnale, richiedendo che il modello sia robusto a una vasta gamma di condizioni degradate.
 
 \section{Architettura del Modello}
 
@@ -144,7 +144,7 @@ Il modulo supporta due modalità di addestramento, selezionate tramite argomenti
 
 \subsection{Modalità con Augmentation al Volo (\texttt{--base\_dir})}
 
-Nella modalità \texttt{--base\_dir} il dataset è una cartella piatta contenente coppie immagine pulita / maschera ground truth. La classe \texttt{ECGBaseDataset} carica l'immagine pulita come base e, durante il training, applica ad ogni iterazione una trasformazione casuale tramite le funzioni \texttt{get\_augment()} e \texttt{get\_creased()} del modulo \texttt{ecg-image-generator}. La maschera subisce le stesse trasformazioni geometriche (rotazione) in modo sincronizzato.
+Nella modalità \texttt{--base\_dir} il dataset è una cartella piatta contenente coppie immagine pulita / maschera ground truth. La classe \texttt{ECGBaseDataset} carica l'immagine pulita come base e applica una trasformazione tramite le funzioni \texttt{get\_augment()} e \texttt{get\_creased()} del modulo \texttt{ecg-image-generator}. Per il training l'augmentation è casuale ad ogni iterazione; per validation e test è applicata deterministicamente, con i parametri campionati da un generatore seedato sull'indice del campione, in modo che ogni immagine subisca sempre le stesse distorsioni ad ogni epoch. Questo garantisce metriche di validazione stabili e confrontabili tra epoch, pur mantenendo la distribuzione del set di valutazione rappresentativa delle condizioni reali di acquisizione. La maschera subisce le stesse trasformazioni geometriche (rotazione) in modo sincronizzato.
 
 \begin{figure}[H]
 \raggedright
@@ -256,6 +256,8 @@ Nella modalità \texttt{--base\_dir}, la funzione \texttt{scale\_augment\_args()
 
 Anche i pesi della funzione di perdita si adattano ai tre stage del curriculum: il peso della clDice Loss aumenta progressivamente man mano che le immagini diventano più difficili, per penalizzare sempre di più le interruzioni nei tracciati in presenza di artefatti pesanti. I pesi di Focal e Dice rimangono invece costanti.
 
+Rispetto a un addestramento in un singolo stage, questa struttura offre vantaggi concreti a più livelli. Dal punto di vista dell'ottimizzazione, presentare fin dall'inizio immagini con artefatti pesanti spinge il modello verso minimi locali difficili da abbandonare: il segnale di gradiente è dominato dagli esempi più rumorosi, che sono anche quelli in cui la perdita è più alta, prima che il modello abbia sviluppato una rappresentazione stabile del tracciato. Lo stage 0 su immagini pulite offre invece un segnale di supervisione chiaro, che permette al modello di apprendere rapidamente la geometria di base del segnale ECG; gli stage successivi affinano questa rappresentazione in condizioni via via più sfidanti, senza partire da zero. Il progressivo scongelamento dell'encoder e la separazione del fine-tuning della \texttt{DetectionHead} in uno stage dedicato derivano dalla stessa logica e sono descritti rispettivamente nelle Sezioni~\ref{sec:curriculum} e~\ref{sec:det_finetune}.
+
 \subsection{Parametric Dropout per Stage}
 
 Il dropout~\cite{JMLR:v15:srivastava14a} è una tecnica di regolarizzazione che durante il training disattiva casualmente una frazione dei neuroni ad ogni forward pass, forzando la rete a non dipendere da singoli percorsi di attivazione e a sviluppare rappresentazioni più robuste e ridondanti. La frazione di neuroni disattivati è controllata dal parametro $p$: un valore più alto corrisponde a una regolarizzazione più aggressiva.
@@ -356,41 +358,41 @@ Ogni 50 batch viene stampato anche il loss del singolo batch, per monitorare l'a
 Al termine di ogni stage, il modulo genera automaticamente un pannello di diagnostica salvato in \texttt{loss\_plots/loss\_<stage>.png}. Ogni pannello è composto da due grafici affiancati:
 
 \begin{itemize}
-    \item \textbf{Loss totale con learning rate:} andamento della train loss e della val loss per epoca (asse sinistro), con la traiettoria del cosine annealing scheduler sovrapposta sull'asse destro in rosso tratteggiato. Una linea verticale grigia indica l'epoca con la minima val loss (best checkpoint).
+    \item \textbf{Loss totale:} andamento della train loss e della val loss per epoca. Una linea verticale grigia indica l'epoca con la minima val loss (best checkpoint).
     \item \textbf{Componenti della loss:} le tre componenti Focal, Dice e clDice tracciate separatamente per train (tratteggiato) e val (continuo), permettendo di identificare quale termine guida la discesa e se uno dei tre è in sovra-adattamento.
 \end{itemize}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{images/loss_stage0_easy.png}
-    \caption{Pannello di diagnostica dello \texttt{stage0\_easy}: loss totale, learning rate e componenti.}
+    \caption{Pannello di diagnostica dello \texttt{stage0\_easy}: loss totale e componenti.}
     \label{fig:loss_stage0}
 \end{figure}
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{images/loss_stage1_medium.png}
-    \caption{Pannello di diagnostica dello \texttt{stage1\_medium}: loss totale, learning rate e componenti.}
+    \caption{Pannello di diagnostica dello \texttt{stage1\_medium}: loss totale e componenti.}
     \label{fig:loss_stage1}
 \end{figure}
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{images/loss_stage2_hard.png}
-    \caption{Pannello di diagnostica dello \texttt{stage2\_hard}: loss totale, learning rate e componenti. La linea tratteggiata indica il best checkpoint all'epoca 39.}
+    \caption{Pannello di diagnostica dello \texttt{stage2\_hard}: loss totale e componenti. La linea verticale grigia indica il best checkpoint all'epoca 39.}
     \label{fig:loss_stage2}
 \end{figure}
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{images/loss_det_finetune.png}
-    \caption{Pannello di diagnostica dello \texttt{stage di finetuning della DetectionHead}: loss totale e learning rate}
+    \caption{Pannello di diagnostica dello \texttt{stage di finetuning della DetectionHead}: loss totale e learning rate.}
     \label{fig:loss_det_finetune}
 \end{figure}
 
 
-Dalla Figura~\ref{fig:loss_stage2} emergono alcuni aspetti caratteristici dell'addestramento allo stage più difficile. La val loss converge significativamente più in basso della train loss: questo comportamento, apparentemente controintuitivo, è atteso in presenza di dropout e augmentation aggressiva applicata solo al training set, il modello vede immagini degradate durante l'addestramento ma viene valutato su immagini pulite. Il gap si riduce progressivamente man mano che il cosine annealing abbassa il learning rate, stabilizzando l'ottimizzazione. La componente Dice domina quantitativamente le altre per via della sua scala naturale nell'intervallo $[0, 1]$; le componenti Focal e clDice, pur di valore assoluto inferiore, esercitano un contributo proporzionalmente importante al gradiente complessivo grazie ai loro pesi nel calcolo della loss composita.
+Dalla Figura~\ref{fig:loss_stage2} emergono alcuni aspetti caratteristici dell'addestramento allo stage più difficile. La val loss converge significativamente più in basso della train loss: questo comportamento, apparentemente controintuitivo, è atteso in presenza di dropout e augmentation. Il dropout è attivo solo durante il training (in PyTorch, \texttt{model.eval()} lo disabilita automaticamente durante la validazione), riducendo la capacità effettiva della rete durante l'addestramento. Inoltre, l'augmentation del training è casuale ad ogni epoch (il modello non vede mai la stessa versione di un'immagine due volte), mentre quella di validation è fissa per campione: il set di validazione rappresenta un sottoinsieme di difficoltà mediamente più stabile, e la rete non deve generalizzare a nuove varianti ma solo a distorsioni già fisse. Il gap si riduce progressivamente man mano che il cosine annealing abbassa il learning rate, stabilizzando l'ottimizzazione. La componente Dice domina quantitativamente le altre per via della sua scala naturale nell'intervallo $[0, 1]$; le componenti Focal e clDice, pur di valore assoluto inferiore, esercitano un contributo proporzionalmente importante al gradiente complessivo grazie ai loro pesi nel calcolo della loss composita.
 
 \subsection{Valutazione Finale sul Test Set}
 
-Al termine di tutti gli stage, il modello viene valutato sul subset di test mantenuto separato durante tutto il training. Questo fornisce una stima non distorta delle prestazioni finali su dati mai visti, indipendente dalle scelte di iperparametri effettuate sulla base della val loss.
+Al termine di tutti gli stage, il modello viene valutato sul subset di test mantenuto separato durante tutto il training. Questo fornisce una stima non distorta delle prestazioni finali su dati mai visti, indipendente dalle scelte di iperparametri effettuate sulla base della val loss. Come ulteriore banco di prova, il modello viene valutato anche su un insieme di scansioni ECG reali fornite da un ospedale: questo secondo test set permette di verificare la capacità di generalizzazione del modello al di fuori del dominio sintetico su cui è stato addestrato.
 
 \subsection{Precisione Mista e Supporto Hardware}\label{sec:amp}
 
@@ -539,7 +541,7 @@ La soluzione adottata è una \textbf{cross-attention per lead}: ciascuno dei 12 
 
 Grazie alla cross-attention, ciascun lead apprende a concentrarsi sulla propria porzione della feature map: i pesi di attenzione diventano, dopo il training, una mappa di localizzazione implicita specifica per quel lead. Questo è strutturalmente superiore al pooling globale o per strisce, che forniscono la stessa rappresentazione condivisa a tutti i lead costringendo l'MLP finale a risolvere il problema di localizzazione senza informazioni spaziali differenziate.
 
-La head è collegata al \textbf{penultimo livello dell'encoder} (\texttt{features[-2]}, corrispondente al \texttt{layer3} di ResNet50) anziché al bottleneck più profondo (\texttt{features[-1]}). Il bottleneck ha risoluzione spaziale dimezzata rispetto al \texttt{layer3} per via dell'ulteriore passo di downsampling: collegare la head a \texttt{layer3} raddoppia il numero di celle spaziali disponibili per ciascuna fascia e consente una regressione delle coordinate del centro significativamente più precisa, a fronte di un aumento modesto del consumo di VRAM ($\sim$100 MB per batch di 8 immagini a 1024 px).
+La head è collegata al \textbf{penultimo livello dell'encoder} (\texttt{features[-2]}, corrispondente al \texttt{layer3} di ResNet50) anziché al bottleneck più profondo (\texttt{features[-1]}). In una prima versione la head era effettivamente collegata al bottleneck, ma durante la sperimentazione si è osservato che la ridotta risoluzione spaziale di questo livello comprometteva la precisione nella regressione delle coordinate: la cross-attention disponeva di troppo poche celle per discriminare lead adiacenti, producendo bounding box imprecisi. Il bottleneck ha risoluzione spaziale dimezzata rispetto al \texttt{layer3} per via dell'ulteriore passo di downsampling: collegare la head a \texttt{layer3} raddoppia il numero di celle spaziali disponibili per ciascuna fascia e consente una regressione delle coordinate del centro significativamente più precisa, a fronte di un aumento modesto del consumo di VRAM ($\sim$100 MB per batch di 8 immagini a 1024 px).
 
 \subsection{Rappresentazione OBB (Oriented Bounding Box)}
 
