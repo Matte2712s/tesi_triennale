@@ -16,7 +16,7 @@
     \item \textbf{Generazione di layout ed intestazioni:} sintesi procedurale di dati anagrafici, formati di reportistica multimodale e griglie millimetrate.
     \item \textbf{Simulazione di artefatti geometrici:} riproduzione di pieghe, rotazioni, deformazioni prospettiche e variazioni di orientamento del foglio.
     \item \textbf{Degradazione dell'immagine:} simulazione di artefatti tipici dei processi di scansione, quali variazioni di contrasto, compressione dell'immagine, ombre e rumore del sensore.
-    \item \textbf{Segmentazione semantica con curriculum learning:} addestramento di una U-Net con decoder scSE su tre stage di difficoltà crescente, con augmentation al volo, unfreezing progressivo dell'encoder e una funzione di perdita composita (Focal + Dice + clDice) con pesi variabili per stage.
+    \item \textbf{Segmentazione semantica con curriculum learning:} addestramento di una U-Net (architettura encoder-decoder con skip connections per la segmentazione semantica) con decoder scSE (modulo di attenzione che ricalibrare le mappe di caratteristiche sia lungo la dimensione dei canali sia spazialmente, permettendo alla rete di enfatizzare le regioni e i canali più informativi) su tre stage di difficoltà crescente, con augmentation al volo, unfreezing progressivo dell'encoder e una funzione di perdita composita (Focal + Dice + clDice) con pesi variabili per stage.
 \end{enumerate}
 
 \vspace{0.2cm}

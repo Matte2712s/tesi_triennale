@@ -62,7 +62,7 @@ I pesi $w$ vengono adattati ai tre stage del curriculum, come descritto nella Se
 
 \subsubsection{Focal Loss}
 
-La Focal Loss~\cite{lin2018focallossdenseobject} affronta un problema fondamentale di questo task: i pixel di tracciato sono una minoranza estrema dell'immagine (meno del 5\% del totale), e una loss standard come la Binary Cross-Entropy tenderebbe a ignorarli, imparando semplicemente a classificare tutto come sfondo.
+La Focal Loss~\cite{lin2018focallossdenseobject} affronta un problema fondamentale di questo task: i pixel di tracciato sono una minoranza estrema dell'immagine (meno del 5\% del totale), e una loss standard come la Binary Cross-Entropy~\cite{goodfellow2016} tenderebbe a ignorarli, imparando semplicemente a classificare tutto come sfondo.
 
 La Focal Loss risolve questo sbilanciamento modulando il peso di ogni pixel in base alla difficoltà della sua classificazione. I pixel già classificati correttamente con alta confidenza contribuiscono poco al gradiente; quelli difficili, come i pixel di tracciato parzialmente oscurati da un artefatto, ricevono un peso maggiore e guidano l'apprendimento. Formalmente:
 
@@ -167,7 +167,7 @@ Il dataset viene suddiviso automaticamente in training, validation e test con pr
 
 Quando \texttt{--temperature} è non zero, la temperatura viene randomizzata per ogni immagine tra 2000–4000 K (tono caldo) o 10000–20000 K (tono freddo), scelti con probabilità equiprobabili; il valore 0 seleziona una temperatura neutra di 6500 K senza alcuna variazione visibile.
 
-\subsection{Modalità con Immagini Pre-augmentate (\texttt{--base\_dir\_augmented})}
+\subsection{Modalità con Immagini Pre-augmentate (\texttt{--base\_\allowbreak{}dir\_\allowbreak{}augmented})}
 
 Nella modalità \texttt{--base\_dir\_augmented} il dataset è già organizzato in tre sottodirectory di stage. La classe \texttt{ECGSegmentationDataset} esegue il caricamento senza alcuna augmentation aggiuntiva, applicando solo normalizzazione e ridimensionamento opzionale.
 
@@ -247,7 +247,7 @@ L'addestramento si articola in quattro stage successivi. I primi tre costituisco
 \addlinespace[0.5em]
 \texttt{stage2\_hard}   & \texttt{--epochs} // 2 & \texttt{--lr\_hard} ($10^{-6}$) & Sì & No & sempre \\
 \addlinespace[0.5em]
-\texttt{det\_finetune}  & \texttt{--det\_finetune\_epochs} (30) & \texttt{--det\_finetune\_lr} ($10^{-4}$) & Sì & Sì & solo \texttt{--det} \\
+\texttt{det\_finetune}  & \texttt{--det\_finetune\_\allowbreak{}epochs} (30) & \texttt{--det\_finetune\_lr} ($10^{-4}$) & Sì & Sì & solo \texttt{--det} \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -503,7 +503,7 @@ Il flag \texttt{--detection} estende il modello base con una \textbf{head di det
 
 \subsection{Architettura della Detection Head}
 
-Quando \texttt{--detection} è attivo, la classe \texttt{smp.Unet} viene sostituita da \texttt{ECGMultiTaskModel}, che condivide l'encoder e il decoder con il task di segmentazione e aggiunge una \texttt{DetectionHead} collegata al collo di bottiglia dell'encoder.
+Quando \texttt{--detection} è attivo, la classe \texttt{smp.Unet} viene sostituita da \texttt{ECG\allowbreak{}Multi\allowbreak{}Task\allowbreak{}Model}, che condivide l'encoder e il decoder con il task di segmentazione e aggiunge una \texttt{Detection\allowbreak{}Head} collegata al collo di bottiglia dell'encoder.
 
 La scelta cruciale riguarda \textit{come} estrarre dalla feature map spaziale, di forma \texttt{(B, C, H, W)}, una rappresentazione per ciascuno dei 12 lead che preservi le informazioni sulla loro posizione. Un \textit{global average pooling} collasserebbe tutte le dimensioni spaziali in un unico vettore condiviso: tutti i lead dovrebbero essere localizzati a partire dalla stessa rappresentazione globale, senza alcun meccanismo che permetta a ciascun lead di ``guardare'' nella propria regione dell'immagine.
 
@@ -585,7 +585,7 @@ La perdita di detection è a sua volta composta da tre termini:
 \]
 
 \begin{itemize}
-    \item \textbf{BCE -- Binary Cross-Entropy per la presenza:} per ciascuno dei 12 lead, il modello produce un logit scalare che, dopo la sigmoid, rappresenta la probabilità che quel lead sia visibile nell'immagine. La BCE misura la discrepanza tra questa probabilità e il valore binario di ground truth (0 = assente, 1 = presente), penalizzando le predizioni lontane dal target.
+    \item \textbf{BCE -- Binary Cross-Entropy~\cite{goodfellow2016} per la presenza:} per ciascuno dei 12 lead, il modello produce un logit scalare che, dopo la sigmoid, rappresenta la probabilità che quel lead sia visibile nell'immagine. La BCE misura la discrepanza tra questa probabilità e il valore binario di ground truth (0 = assente, 1 = presente), penalizzando le predizioni lontane dal target.
 
     \item \textbf{GIoU per le coordinate geometriche $(c_x, c_y, w, h)$:} la \textit{Generalized Intersection over Union}~\cite{DBLP:journals/corr/abs-1902-09630} ottimizza direttamente la qualità della sovrapposizione tra bounding box predetto e ground truth, a differenza delle perdite coordinate-wise come Smooth-L1 che trattano ogni parametro in modo indipendente. La GIoU è definita come:
     \[

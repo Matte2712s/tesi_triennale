@@ -153,7 +153,7 @@ I tempi riportati nelle tabelle seguenti sono stati ottenuti su un campione di 2
 
 \subsection{Confronto per Configurazione di Artefatti}
 
-La Tabella~\ref{tab:bench_config} riporta il tempo medio di generazione per immagine nelle diverse configurazioni, eseguito in modalità single-process per consentire il confronto diretto con i benchmark della repository originale~\cite{ecgimagekitpaper}.
+La Tabella~\ref{tab:bench_config} riporta il tempo medio di generazione per immagine nelle diverse configurazioni, eseguito in modalità single-process per consentire il confronto diretto con i benchmark del repository originale~\cite{ecgimagekitpaper}.
 
 \begin{table}[H]
 \centering
@@ -174,7 +174,7 @@ Tutti gli artefatti           & 99.05 & 4.952 \\
 
 \subsection{Scalabilità della Parallelizzazione}
 
-La Tabella~\ref{tab:bench_scale} riporta i tempi di generazione della configurazione baseline al variare del numero di processi paralleli, evidenziando lo speedup ottenuto grazie alla parallelizzazione introdotta in questo lavoro. Il caso a 1 processo corrisponde all'esecuzione seriale della repository originale.
+La Tabella~\ref{tab:bench_scale} riporta i tempi di generazione della configurazione baseline al variare del numero di processi paralleli, evidenziando lo speedup ottenuto grazie alla parallelizzazione introdotta in questo lavoro. Il caso a 1 processo corrisponde all'esecuzione seriale del repository originale.
 
 \begin{table}[H]
 \centering
@@ -262,13 +262,13 @@ Il punto di massimo speedup a 8 worker coincide quindi con il numero di core fis
 \label{fig:bench_scale}
 \end{figure}
 
-\subsection{Confronto con la Repository Originale}
+\subsection{Confronto con il Repository Originale}
 
-La Tabella~\ref{tab:bench_original} mette a confronto i tempi riportati nella repository originale~\cite{ecgimagekitpaper} (misurati su Apple M2) con quelli ottenuti in questo lavoro sull'hardware di test. I valori non sono direttamente comparabili a causa delle differenze architetturali tra le due piattaforme (Apple M2 con memoria unificata e accelerazione Neural Engine vs AMD Ryzen 5700X, esecuzione CPU-only su Windows); il confronto è riportato a titolo orientativo.
+La Tabella~\ref{tab:bench_original} mette a confronto i tempi riportati nel repository originale~\cite{ecgimagekitpaper} (misurati su Apple M2) con quelli ottenuti in questo lavoro sull'hardware di test. I valori non sono direttamente comparabili a causa delle differenze architetturali tra le due piattaforme (Apple M2 con memoria unificata e accelerazione Neural Engine vs AMD Ryzen 5700X, esecuzione CPU-only su Windows); il confronto è riportato a titolo orientativo.
 
 \begin{table}[H]
 \centering
-\caption{Confronto dei tempi di generazione con la repository originale (Apple M2 vs hardware di test).}
+\caption{Confronto dei tempi di generazione con il repository originale (Apple M2 vs hardware di test).}
 \label{tab:bench_original}
 \begin{tabular}{lrr}
 \hline
@@ -292,7 +292,7 @@ Le configurazioni con \textbf{augmentation} e \textbf{testo manoscritto} risulta
 
 La configurazione con sole \textbf{pieghe} è leggermente più lenta: l'algoritmo di image quilting è computazionalmente intenso ma non beneficia di istruzioni SIMD specifiche come l'augmentation, rendendo la banda di memoria il fattore discriminante.
 
-Va sottolineato che il confronto è effettuato in modalità single-process. Grazie alla parallelizzazione introdotta in questo lavoro, attivando 8 worker il throughput effettivo scala di $3.03\times$: la baseline passa da 1.010~s a $\sim$0.33~s per immagine, scendendo abbondantemente al di sotto del valore misurato sull'Apple~M2. Analogamente, la configurazione con tutti gli artefatti passa da 4.952~s a $\sim$1.63~s per immagine, un risultato non raggiungibile dalla repository originale, che non supporta l'elaborazione parallela.
+Va sottolineato che il confronto è effettuato in modalità single-process. Grazie alla parallelizzazione introdotta in questo lavoro, attivando 8 worker il throughput effettivo scala di $3.03\times$: la baseline passa da 1.010~s a $\sim$0.33~s per immagine, scendendo abbondantemente al di sotto del valore misurato sull'Apple~M2. Analogamente, la configurazione con tutti gli artefatti passa da 4.952~s a $\sim$1.63~s per immagine, un risultato non raggiungibile dal repository originale, che non supporta l'elaborazione parallela.
 
 \begin{figure}[H]
 \centering
@@ -332,7 +332,7 @@ Va sottolineato che il confronto è effettuato in modalità single-process. Graz
 \addlegendentry{Questo lavoro (Ryzen 5700X)}
 \end{axis}
 \end{tikzpicture}
-\caption{Confronto dei tempi medi per immagine tra la repository originale (Apple M2) e questo lavoro (AMD Ryzen 5700X, CPU-only). La configurazione ``Baseline + intestazione stampata'' è esclusa in quanto non misurata in questo lavoro.}
+\caption{Confronto dei tempi medi per immagine tra il repository originale (Apple M2) e questo lavoro (AMD Ryzen 5700X, CPU-only). La configurazione ``Baseline + intestazione stampata'' è esclusa in quanto non misurata in questo lavoro.}
 \label{fig:bench_comparison}
 \end{figure}
 

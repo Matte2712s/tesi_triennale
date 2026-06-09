@@ -1,6 +1,6 @@
 \chapter{Architettura del Software e Logica di Rendering}
 
-Il presente capitolo illustra la struttura interna del sistema di generazione delle immagini, descrivendo come i moduli che lo compongono cooperino per trasformare un segnale ECG digitale in un'immagine sintetica pronta per l'addestramento di modelli di Deep Learning. Il sistema è stato sviluppato a partire dalla repository pubblica \textit{ECG-Image-Kit}~\cite{ecgimagekitpaper}, sulla quale sono state apportate significative estensioni e modifiche al fine di aumentarne la flessibilità, le prestazioni e la varietà dell'output prodotto.
+Il presente capitolo illustra la struttura interna del sistema di generazione delle immagini, descrivendo come i moduli che lo compongono cooperino per trasformare un segnale ECG digitale in un'immagine sintetica pronta per l'addestramento di modelli di Deep Learning. Il sistema è stato sviluppato a partire dal repository pubblico \textit{ECG-Image-Kit}~\cite{ecgimagekitpaper}, sulla quale sono state apportate significative estensioni e modifiche al fine di aumentarne la flessibilità, le prestazioni e la varietà dell'output prodotto.
 
 \section{Struttura Modulare del Progetto}
 
@@ -59,7 +59,7 @@ La scansione dei file HDF5 è gestita dalla funzione \texttt{find\_code15\_recor
 
 \section{Pipeline di Elaborazione Batch}\label{sec:batch}
 
-L'elaborazione di un intero dataset è gestita da \texttt{gen\_ecg\_images\_from\_data\_batch.py}. Il flusso è il seguente:
+L'elaborazione di un intero dataset è gestita da \texttt{gen\_ecg\_images\_\allowbreak{}from\_data\_\allowbreak{}batch.py}. Il flusso è il seguente:
 
 \begin{enumerate}
     \item \textbf{Scansione della directory di input:} il comportamento dipende dal parametro \texttt{--dataset\_format}. In modalità \texttt{ptbxl} (default) la funzione \texttt{find\_records()} percorre ricorsivamente la directory cercando file \texttt{.dat} o \texttt{.mat}, accoppiando ciascun file dati con il corrispondente header \texttt{.hea}; la struttura di sottodirectory viene replicata nella cartella di output. In modalità \texttt{code15} la funzione \texttt{find\_code15\_records()} scansiona i file HDF5 presenti nella directory (o il singolo file indicato) e restituisce la lista di tutti gli esami, identificati da percorso HDF5 e indice nel tensore.
@@ -220,7 +220,7 @@ Un contributo apportato al sistema riguarda l'introduzione di perturbazioni geom
 \begin{itemize}
     \item Traslazione verticale delle derivazioni: fino a \texttt{--max\_shift\_y} mV.
     \item Traslazione orizzontale delle colonne: fino a \texttt{--max\_shift\_col\_x} secondi.
-    \item Traslazione orizzontale dell'impulso di calibrazione: fino a \texttt{--max\_shift\_pulse\_x}.
+    \item Traslazione orizzontale dell'impulso di calibrazione: fino a \texttt{--max\_shift\_\allowbreak{}pulse\_x}.
     \item Traslazione verticale dell'impulso di calibrazione: fino a \texttt{--max\_shift\_pulse\_y}.
     \item Traslazione dell'etichetta della derivazione: fino a \texttt{--max\_shift\_name}.
 \end{itemize}
@@ -237,7 +237,7 @@ Il flag \texttt{--generate\_clean}, introdotto come nuova funzionalità, abilita
 
 \section{Output del Sistema e Configurazione JSON}\label{sec:output}
 
-La pipeline di generazione opera interamente in memoria: il modulo di rendering restituisce l'immagine come oggetto Pillow in RAM, che viene passato in sequenza ai moduli di testo manoscritto, pieghe e augmentation senza mai scrivere file intermedi su disco. Questa scelta rappresenta un miglioramento rispetto alla repository originale, in cui ogni stadio della pipeline salvava l'immagine su disco per poi rileggerla allo stadio successivo, introducendo latenza di I/O non necessaria. Solo al termine dell'intera catena di elaborazione l'immagine finale (e l'eventuale maschera) viene serializzata nella directory di output. Questo approccio elimina la latenza di I/O degli stadi intermedi e riduce le operazioni di scrittura al minimo indispensabile, migliorando le prestazioni specialmente quando più processi generano immagini in parallelo e competono per l'accesso al disco.
+La pipeline di generazione opera interamente in memoria: il modulo di rendering restituisce l'immagine come oggetto Pillow in RAM, che viene passato in sequenza ai moduli di testo manoscritto, pieghe e augmentation senza mai scrivere file intermedi su disco. Questa scelta rappresenta un miglioramento rispetto al repository originale, in cui ogni stadio della pipeline salvava l'immagine su disco per poi rileggerla allo stadio successivo, introducendo latenza di I/O non necessaria. Solo al termine dell'intera catena di elaborazione l'immagine finale (e l'eventuale maschera) viene serializzata nella directory di output. Questo approccio elimina la latenza di I/O degli stadi intermedi e riduce le operazioni di scrittura al minimo indispensabile, migliorando le prestazioni specialmente quando più processi generano immagini in parallelo e competono per l'accesso al disco.
 
 Al termine della generazione di ogni immagine, il sistema produce i seguenti file:
 
