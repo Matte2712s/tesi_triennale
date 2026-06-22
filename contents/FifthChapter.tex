@@ -619,19 +619,9 @@ Quando l'augmentation include rotazione (\texttt{--rotate}), le coordinate dei c
 
 A tempo di inferenza, \texttt{test\_and\_visualize\_masks.py} converte le OBB predette in coordinate pixel tramite \texttt{obb\_to\_corners()} e le disegna come poligoni quadrilateri sull'immagine originale, supportando la visualizzazione di bounding box ruotati.
 
- \begin{figure}[!ht]
+\begin{figure}[!ht]
     \centering
-    \begin{minipage}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{images/viz_det_before.png}
-        \caption*{Prima del \texttt{det\_finetune}.}
-    \end{minipage}
-    \hfill
-    \begin{minipage}[t]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{images/viz_det_after.png}
-        \caption*{Dopo il \texttt{det\_finetune}.}
-    \end{minipage}
-    \caption{Effetto del \texttt{det\_finetune} sulla localizzazione dei lead. Prima del fine-tuning (sinistra) la \texttt{DetectionHead}, non ancora addestrata, produce bounding box non significativi; dopo il fine-tuning (destra) i box verdi (\textit{lime}) individuano in modo migliore le regioni dei tracciati e quelli gialli tratteggiati le etichette testuali.}
-    \label{fig:viz_det_comparison}
-\end{figure} 
+    \includegraphics[width=0.45\textwidth]{images/viz_det_after.png}
+    \caption{Localizzazione dei lead al termine dello stage \texttt{det\_finetune}. I box verdi (\textit{lime}) individuano le regioni dei tracciati, quelli gialli tratteggiati le etichette testuali. La regressione degli OBB segue l'orientamento dei tracciati anche quando l'immagine è ruotata dall'augmentation.}
+    \label{fig:viz_det_after}
+\end{figure}
