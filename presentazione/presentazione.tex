@@ -181,7 +181,7 @@
         \begin{itemize}
           \item \textbf{Testo manoscritto} (RNN+MDN, NLP biomedico)
           \item \textbf{Pieghe e rugosità} (image quilting + min-cut)
-          \item \textbf{Degradazione foto/geometrica}: rotazione, blur, rumore, JPEG, dropout, luminosità
+          \item \textbf{Degradazione foto/geometrica}: rotazione e rumore gaussiano (base) + \alert{blur, sale-pepe, JPEG, luminosità, dropout} introdotti
         \end{itemize}
       \end{block}
       \textbf{Estensioni introdotte:} dropout \alert{differenziale} (tracciato vs sfondo), shift geometrico per elemento, generazione maschera (\textit{ground truth}), bounding box orientati, supporto CODE-15\%.

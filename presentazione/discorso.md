@@ -76,9 +76,9 @@ Il sistema supporta i quattro layout della pratica clinica e l'ho costruito este
 
 Qui arriviamo al cuore del primo stadio. Un modello addestrato su immagini **pulite** crolla appena lo si mette davanti a documenti reali, che accumulano difetti durante tutto il loro ciclo di vita — stampa, manipolazione, conservazione, scansione. Questo divario si chiama *domain gap*.
 
-Per ridurlo ho costruito una pipeline che inietta tre classi di artefatti realistici: il **testo manoscritto** delle annotazioni mediche, generato con una rete neurale; le **pieghe e le rugosità** della carta; e una serie di **degradazioni fotometriche e geometriche** — rotazioni, sfocatura, rumore, compressione JPEG, variazioni di luminosità. A destra ne vedete alcuni esempi e, in basso, la configurazione completa con tutti gli artefatti combinati: un'immagine che assomiglia a un documento davvero scansionato.
+Per ridurlo ho costruito una pipeline che inietta tre classi di artefatti realistici: il **testo manoscritto** delle annotazioni mediche, generato con una rete neurale; le **pieghe e le rugosità** della carta; e una serie di **degradazioni fotometriche e geometriche**. A destra ne vedete alcuni esempi e, in basso, la configurazione completa con tutti gli artefatti combinati: un'immagine che assomiglia a un documento davvero scansionato.
 
-Tra i contributi originali rispetto al repository di partenza ne segnalo due: il **dropout differenziale**, che degrada sfondo e tracciato con probabilità diverse — utile per simulare carta rovinata ma inchiostro ancora leggibile — e la **generazione automatica della maschera**, che vediamo ora.
+Buona parte di queste degradazioni è un mio contributo: il toolbox di partenza offriva solo la rotazione e il rumore gaussiano, mentre ho aggiunto io la **sfocatura**, il **rumore sale-e-pepe**, la **compressione JPEG** e le **variazioni di luminosità** — proprio i difetti tipici di stampa e scansione. A questi si aggiungono due contributi più strutturali: il **dropout differenziale**, che degrada sfondo e tracciato con probabilità diverse — utile per simulare carta rovinata ma inchiostro ancora leggibile — e la **generazione automatica della maschera**, che vediamo ora.
 
 ---
 
