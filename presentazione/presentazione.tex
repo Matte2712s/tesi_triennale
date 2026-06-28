@@ -41,7 +41,7 @@
     \usebeamerfont{author in head/foot}Matteo Sardi
   \end{beamercolorbox}%
   \begin{beamercolorbox}[wd=.55\paperwidth,ht=2.4ex,dp=1ex,center]{title in head/foot}%
-    \usebeamerfont{title in head/foot}Segmentazione e Generazione di Immagini ECG
+    \usebeamerfont{title in head/foot}Generazione Sintetica e Segmentazione di Immagini ECG
   \end{beamercolorbox}%
   \begin{beamercolorbox}[wd=.15\paperwidth,ht=2.4ex,dp=1ex,rightskip=.3em]{date in head/foot}%
     \hfill\insertframenumber\,/\,\inserttotalframenumber\,
@@ -61,7 +61,7 @@
   \end{frame}
 }
 
-\title[Segmentazione e Generazione di Immagini ECG]{Generazione Sintetica e Segmentazione di Immagini ECG}
+\title[Generazione Sintetica e Segmentazione di Immagini ECG]{Generazione Sintetica e Segmentazione di Immagini ECG}
 \subtitle{Pipeline per la Digitalizzazione del Tracciato}
 \author[Matteo Sardi]{Matteo Sardi}
 \institute[UniTo]{Università degli Studi di Torino \\ Dipartimento di Informatica \\[1mm] \footnotesize Relatore: Prof.\ Matteo Sereno \quad Correlatore: Dott.\ Daniele Baccega}
@@ -159,7 +159,7 @@
         \end{itemize}
         \item Corrispondenza \alert{millimetrica} pixel $\leftrightarrow$ grandezze fisiche.
         \item 4 layout clinici ($12\times1$, $6\times2$, $3\times4$, $6\times1$ split) con segmentazione temporale coerente.
-        \item Sviluppato estendendo \textbf{ECG-Image-Kit} (CODE-15\% HDF5, config YAML, rendering in-memory).
+        \item Estensioni al rendering: supporto \textbf{CODE-15\%} (HDF5), configurazione via YAML, rendering \alert{in-memory}.
       \end{itemize}
     \end{column}
     \begin{column}{0.5\textwidth}
@@ -184,7 +184,7 @@
           \item \textbf{Degradazione foto/geometrica}: rotazione e rumore gaussiano (base) + \alert{blur, sale-pepe, JPEG, luminosità, dropout} introdotti
         \end{itemize}
       \end{block}
-      \textbf{Estensioni introdotte:} dropout \alert{differenziale} (tracciato vs sfondo), shift geometrico per elemento, generazione maschera (\textit{ground truth}), bounding box orientati, supporto CODE-15\%.
+      \textbf{Estensioni introdotte:} dropout \alert{differenziale} (tracciato vs sfondo), shift geometrico per elemento, \textbf{generazione maschera (\textit{ground truth})}, bounding box orientati, supporto CODE-15\%.
     \end{column}
     \begin{column}{0.5\textwidth}
       \centering
