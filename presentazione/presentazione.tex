@@ -90,7 +90,6 @@
         \item L'\alert{elettrocardiogramma (ECG)} registra l'attività elettrica del cuore; lo standard clinico è a \textbf{12 derivazioni}.
         \item Una vasta quantità di dati diagnostici storici esiste \alert{solo su carta} o come scansioni analogiche.
         \item La conversione automatica carta $\rightarrow$ segnale numerico è essenziale per l'analisi computazionale su larga scala.
-        \item \textbf{Ostacolo principale:} mancano dataset annotati con la variabilità e le imperfezioni dei documenti ospedalieri reali.
       \end{itemize}
     \end{column}
     \begin{column}{0.42\textwidth}
@@ -181,7 +180,7 @@
         \begin{itemize}
           \item \textbf{Testo manoscritto} (RNN+MDN, NLP biomedico)
           \item \textbf{Pieghe e rugosità} (image quilting + min-cut)
-          \item \textbf{Degradazione foto/geometrica}: rotazione e rumore gaussiano (base) + \alert{blur, sale-pepe, JPEG, luminosità, dropout} introdotti
+          \item \textbf{Degradazione foto/geometrica}: rotazione e rumore gaussiano (base) + \alert{blur, sale-pepe, luminosità, dropout} introdotti
         \end{itemize}
       \end{block}
       \textbf{Estensioni introdotte:} dropout \alert{differenziale} (tracciato vs sfondo), shift geometrico per elemento, \textbf{generazione maschera (\textit{ground truth})}, bounding box orientati, supporto CODE-15\%.
@@ -225,7 +224,7 @@
         \item Carico \alert{\emph{embarrassingly parallel}}: ogni ECG è indipendente.
         \item \texttt{ProcessPoolExecutor} aggira il GIL di Python (vero parallelismo multi-core).
         \item Speedup massimo $\mathbf{3.03\times}$ a \textbf{8 worker} (= core fisici).
-        \item Oltre non scala: carico \alert{CPU-bound}, non I/O-bound $\Rightarrow$ l'hyperthreading non aiuta (più banda di memoria satura).
+        \item Oltre non scala: carico \alert{CPU-bound}, non I/O-bound $\Rightarrow$ l'hyperthreading non aiuta.
         \item Su PTB-XL (>21\,000 record) i tempi di generazione si riducono drasticamente.
       \end{itemize}
     \end{column}
@@ -321,7 +320,6 @@
         \end{enumerate}
         \item \textbf{Unfreezing progressivo} dell'encoder + dropout crescente per stage.
         \item Learning rate decrescente ($10^{-4}\!\to\!10^{-6}$) contro il \textit{catastrophic forgetting}.
-        \item Evita minimi locali dominati dagli esempi più rumorosi.
       \end{itemize}
     \end{column}
     \begin{column}{0.48\textwidth}
@@ -374,7 +372,7 @@
 \begin{frame}{Conclusioni}
   \begin{block}{Contributi}
     \begin{itemize}
-      \item Pipeline di \alert{generazione sintetica} estesa: artefatti realistici, ground truth automatica, parallelizzazione ($3\times$), supporto multi-dataset.
+      \item Pipeline di \alert{generazione sintetica} estesa: artefatti realistici, ground truth automatica, parallelizzazione, supporto multi-dataset.
       \item Modello di \alert{segmentazione} U-Net+scSE con loss composita (Focal+Dice+clDice) e curriculum learning a tre stage.
       \item Detection head multi-task con cross-attention e OBB per la localizzazione dei lead.
     \end{itemize}
