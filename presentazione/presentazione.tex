@@ -77,10 +77,6 @@
   \end{center}
 \end{frame}}
 
-\begin{frame}{Struttura della presentazione}
-  \tableofcontents
-\end{frame}
-
 \section{Contesto e Obiettivo}
 
 \begin{frame}{Il problema: archivi clinici ancora su carta}
@@ -141,7 +137,7 @@
     \fbox{Segnale digitale} $\rightarrow$ \fbox{Rendering} $\rightarrow$ \fbox{Artefatti} $\rightarrow$ \fbox{\textbf{Immagine + maschera}} $\rightarrow$ \fbox{Training U-Net}
   \end{center}
   \vfill
-  \begin{center}\footnotesize\textit{La conversione finale maschera $\rightarrow$ segnale numerico è uno sviluppo futuro.}\end{center}
+  \begin{center}\footnotesize\textit{Questo lavoro si ferma alla maschera segmentata; ricavarne il segnale numerico (la digitalizzazione vera e propria) è lasciato a sviluppi futuri.}\end{center}
   \vfill
 \end{frame}
 
@@ -330,22 +326,25 @@
   \end{columns}
 \end{frame}
 
-\begin{frame}{Risultati Stadio 2: effetto del curriculum}
-  \begin{columns}[c]
-    \begin{column}{0.5\textwidth}
-      \centering
-      \includegraphics[width=\textwidth,height=4.6cm,keepaspectratio]{viz_seg_stage0.png}\\
-      {\scriptsize \texttt{stage0}: heatmap rumorosa, falsi positivi sulla griglia.}
-    \end{column}
-    \begin{column}{0.5\textwidth}
-      \centering
-      \includegraphics[width=\textwidth,height=4.6cm,keepaspectratio]{viz_seg_stage2.png}\\
-      {\scriptsize \texttt{stage2}: maschere più pulite e complete.}
-    \end{column}
-  \end{columns}
-  \vspace{2mm}
+\begin{frame}{Risultati Stadio 2: prima del curriculum}
   \begin{center}
-    Esempi sul \alert{test set sintetico}: il curriculum riduce i falsi positivi sulla griglia e completa i tracciati.
+    \includegraphics[width=\textwidth,height=6.6cm,keepaspectratio]{viz_seg_stage0.png}\\[2mm]
+    {\scriptsize \texttt{stage0}: heatmap rumorosa, falsi positivi sulla griglia.}
+  \end{center}
+  \vspace{1mm}
+  \begin{center}
+    \footnotesize Esempio sul \alert{test set sintetico}: il modello iniziale confonde griglia e tracciato.
+  \end{center}
+\end{frame}
+
+\begin{frame}{Risultati Stadio 2: dopo il curriculum}
+  \begin{center}
+    \includegraphics[width=\textwidth,height=6.6cm,keepaspectratio]{viz_seg_stage2.png}\\[2mm]
+    {\scriptsize \texttt{stage2}: maschere più pulite e complete.}
+  \end{center}
+  \vspace{1mm}
+  \begin{center}
+    \footnotesize Stesso \alert{test set sintetico}: il curriculum riduce i falsi positivi sulla griglia e completa i tracciati.
   \end{center}
 \end{frame}
 
@@ -361,7 +360,7 @@
     \end{column}
     \begin{column}{0.45\textwidth}
       \centering
-      \includegraphics[width=\textwidth,height=5.2cm,keepaspectratio]{viz_det_after.png}\\
+      \includegraphics[width=\textwidth,height=5.2cm,keepaspectratio]{viz_det_after_cropped.png}\\
       {\scriptsize Lead localizzati: box verdi = tracciato, gialli = etichette.}
     \end{column}
   \end{columns}
